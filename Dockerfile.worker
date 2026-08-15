@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.7
+# Python worker (scan / CLAP embed / jobs) — internal only
+FROM python:3.12-slim-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libsndfile1 \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY pyproject.toml README.md ./
+# Dependencies are intentionally installed before source code is copied.
+# A normal code-only rebuild therefore reuses this expensive layer.
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url "${TORCH_INDEX_URL}" "torch>=2.2.0" && \
+    python - <<'PY'
+import subprocess
+import sys
+import tomllib
+
+with open("pyproject.toml", "rb") as fh:
+    dependencies = tomllib.load(fh)["project"]["dependencies"]
+dependencies = [item for item in dependencies if not item.lower().startswith("torch")]
+subprocess.check_call([sys.executable, "-m", "pip", "install", *dependencies])
+PY
+COPY src ./src
+RUN pip install --no-deps -e .
+ENV MUSIK_DB_PATH=/data/db/musik.db \
+    MUSIK_LIBRARY=/music \
+    MUSIK_DATA_DIR=/data \
+    MUSIK_EMBEDDINGS_CACHE=/data/cache/embeddings \
+    MUSIK_ARTWORK_CACHE=/data/cache/artwork \
+    MUSIK_WORKER_ADDR=0.0.0.0:8790 \
+    MUSIK_PLAYER_RELOAD_URL=http://player:8787/api/reload \
+    MUSIK_ROOT=/app
+# Do not EXPOSE publicly in compose — only on internal network
+VOLUME ["/data", "/music"]
+CMD ["musik", "worker"]

@@ -1,0 +1,65 @@
+# Runtime / personal library data
+data/**
+!data/.gitkeep
+!data/music/
+data/music/**
+!data/music/.gitkeep
+
+# Secrets and local deploy credentials
+.env
+deploy/secrets.env
+deploy/.ssh/
+deploy/.vendor/
+*.pem
+*.key
+**/id_ed25519
+**/id_rsa
+**/known_hosts
+
+# Site-specific infrastructure (keep generic *.example templates)
+deploy/nginx.*.conf
+
+# Personal exports and reports
+vk-wishlist*.json
+*wishlist*.json
+docs/paper-*
+*.log
+*.npy
+*.npz
+
+# Python / ML environments
+.venv/
+.venv-rocm/
+.rocm-extra/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+dist/
+build/
+
+# Compiled artifacts
+*.apk
+*.aab
+*.ipa
+player/bin/
+
+# Flutter / Android local state
+# The Flutter application is published as a separate repository.
+mobile/flutter/
+mobile/flutter/.dart_tool/
+mobile/flutter/.idea/
+mobile/flutter/android/.gradle/
+mobile/flutter/android/local.properties
+*.iml
+
+# Editors and local agent artifacts
+.cursor/
+.vscode/
+.DS_Store
+
+# Reports / coverage
+coverage/
+htmlcov/
+.coverage

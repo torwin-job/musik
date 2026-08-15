@@ -1,0 +1,23 @@
+# Go player (API + UI + stream)
+FROM golang:bookworm AS build
+WORKDIR /src
+ENV GOTOOLCHAIN=auto
+COPY player/go.mod player/go.sum ./
+RUN go mod download
+COPY player/ ./
+RUN CGO_ENABLED=0 go build -o /musik-player ./cmd/musik-player
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /musik-player /usr/local/bin/musik-player
+ENV MUSIK_PLAYER_ADDR=:8787 \
+    MUSIK_WORKER_AUTOSTART=0 \
+    MUSIK_DB_PATH=/data/db/musik.db \
+    MUSIK_LIBRARY=/music \
+    MUSIK_WORKER_URL=http://worker:8790 \
+    MUSIK_ROOT=/app
+EXPOSE 8787
+VOLUME ["/data", "/music"]
+CMD ["musik-player"]

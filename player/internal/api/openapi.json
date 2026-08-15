@@ -1,0 +1,210 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "musik API",
+    "version": "1.0.0",
+    "description": "Local CLAP-powered music player API. Single-owner auth via password cookie or Bearer token."
+  },
+  "servers": [{ "url": "http://127.0.0.1:8787" }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer" },
+      "cookieAuth": { "type": "apiKey", "in": "cookie", "name": "musik_session" }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "code": { "type": "string" }
+        }
+      },
+      "Track": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "artist": { "type": "string" },
+          "title": { "type": "string" },
+          "album": { "type": "string" },
+          "duration": { "type": "number" },
+          "stream": { "type": "string" },
+          "artwork": { "type": "string" }
+        }
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "security": [],
+        "summary": "Health",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "security": [],
+        "summary": "Login with password",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "password": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Sets musik_session cookie" },
+          "401": { "description": "Bad password" }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": { "summary": "Logout", "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/auth/me": {
+      "get": {
+        "security": [],
+        "summary": "Auth status",
+        "responses": { "200": { "description": "{ok, auth_enabled}" } }
+      }
+    },
+    "/api/library": {
+      "get": { "summary": "Flat track list", "responses": { "200": { "description": "Track array" } } }
+    },
+    "/api/artists": {
+      "get": { "summary": "Artists", "responses": { "200": { "description": "{artists, count}" } } }
+    },
+    "/api/albums": {
+      "get": { "summary": "Albums", "responses": { "200": { "description": "{albums, count}" } } }
+    },
+    "/api/tracks/{id}": {
+      "get": {
+        "summary": "Track by id",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Track" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/stream/{id}": {
+      "get": {
+        "summary": "Audio stream (Range)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Audio" } }
+      }
+    },
+    "/api/radio/start": {
+      "post": {
+        "summary": "Start radio session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "seed_track_id": { "type": "integer" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "session + current + queue" } }
+      }
+    },
+    "/api/play": {
+      "post": {
+        "summary": "Fixed listen (track/artist/album/ids)",
+        "responses": { "200": { "description": "session + tracks" } }
+      }
+    },
+    "/api/events": {
+      "post": {
+        "summary": "Playback events",
+        "responses": { "200": { "description": "ok / next" } }
+      }
+    },
+    "/api/mixes": {
+      "get": { "summary": "Mix shelves", "responses": { "200": { "description": "mixes" } } }
+    },
+    "/api/mixes/{kind}/play": {
+      "post": {
+        "summary": "Play mix kind",
+        "parameters": [{ "name": "kind", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "session" } }
+      }
+    },
+    "/api/favorites": {
+      "get": { "summary": "List favorites", "responses": { "200": { "description": "tracks/artists/albums" } } },
+      "post": { "summary": "Add favorite", "responses": { "200": { "description": "ok" } } },
+      "delete": { "summary": "Remove favorite", "responses": { "200": { "description": "ok" } } }
+    },
+    "/api/favorites/toggle": {
+      "post": { "summary": "Toggle favorite", "responses": { "200": { "description": "favorited" } } }
+    },
+    "/api/favorites/status": {
+      "get": { "summary": "Favorite status", "responses": { "200": { "description": "favorited bool" } } }
+    },
+    "/api/recommend/seed": {
+      "get": {
+        "summary": "Similar tracks to seed",
+        "parameters": [
+          { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["track", "artist", "album"] } },
+          { "name": "track_id", "in": "query", "schema": { "type": "integer" } },
+          { "name": "artist", "in": "query", "schema": { "type": "string" } },
+          { "name": "album", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "tracks" } }
+      }
+    },
+    "/api/recommend/favorites": {
+      "get": { "summary": "Recommend from favorites", "responses": { "200": { "description": "tracks/artists/albums" } } }
+    },
+    "/api/jobs": {
+      "get": {
+        "summary": "List jobs",
+        "parameters": [{ "name": "status", "in": "query", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "jobs" } }
+      }
+    },
+    "/api/jobs/{kind}": {
+      "post": {
+        "summary": "Enqueue job",
+        "parameters": [{ "name": "kind", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "job id" } }
+      }
+    },
+    "/api/share/radio": {
+      "post": {
+        "summary": "Create public continuous MP3 radio share link",
+        "responses": { "200": { "description": "{url, token}" } }
+      },
+      "get": {
+        "summary": "List radio share links",
+        "responses": { "200": { "description": "{shares, count}" } }
+      }
+    },
+    "/api/share/radio/{token}": {
+      "delete": {
+        "summary": "Revoke share link",
+        "parameters": [{ "name": "token", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/listen/{token}": {
+      "get": {
+        "security": [],
+        "summary": "Continuous MP3 radio stream (public share token)",
+        "parameters": [{ "name": "token", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "audio/mpeg stream" },
+          "404": { "description": "revoked or missing" },
+          "503": { "description": "ffmpeg missing or busy" }
+        }
+      }
+    },
+    "/api/openapi.json": {
+      "get": { "security": [], "summary": "OpenAPI spec", "responses": { "200": { "description": "OpenAPI JSON" } } }
+    }
+  }
+}

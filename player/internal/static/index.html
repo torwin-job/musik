@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a120c" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <title>musik</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="login-gate" class="login-gate" hidden>
+    <form id="login-form" class="login-card" autocomplete="current-password">
+      <div class="brand">musik</div>
+      <p class="tagline">Введи пароль, чтобы открыть библиотеку</p>
+      <label class="sr-only" for="login-password">Пароль</label>
+      <input id="login-password" type="password" name="password" placeholder="Пароль" required autofocus />
+      <button type="submit" class="btn primary" id="login-submit">Войти</button>
+      <p class="login-error" id="login-error" hidden></p>
+    </form>
+  </div>
+
+  <div class="shell" id="app-shell">
+    <header class="top">
+      <div class="brand-block">
+        <div class="brand">musik</div>
+        <p class="tagline" id="maturity">твой локальный микс</p>
+      </div>
+      <nav class="tabs" aria-label="Разделы">
+        <button type="button" class="tab active" data-view="home">Главная</button>
+        <button type="button" class="tab" data-view="player">Сейчас</button>
+        <button type="button" class="tab" data-view="library">Библиотека</button>
+        <button type="button" class="tab" data-view="profile">Профиль</button>
+        <button type="button" class="tab logout-tab" id="btn-logout" hidden>Выйти</button>
+      </nav>
+    </header>
+
+    <main>
+      <section id="view-home" class="view active">
+        <div class="home-actions">
+          <button type="button" class="btn primary" id="btn-radio">▶ Радио</button>
+          <button type="button" class="btn" id="btn-share-radio" title="Ссылка для VLC / браузера / телефона">Поделиться</button>
+          <button type="button" class="btn" id="btn-refresh-mixes">
+            <span id="refresh-label">Обновить миксы</span>
+          </button>
+          <p class="status-line" id="job-status" hidden></p>
+          <p class="status-line" id="share-url-line" hidden></p>
+        </div>
+
+        <section class="shelf">
+          <div class="shelf-head">
+            <h2>Для тебя</h2>
+            <span class="shelf-hint" id="mix-hint"></span>
+          </div>
+          <div class="shelf-rail">
+            <button type="button" class="shelf-nav prev" data-for="mix-cards" aria-label="Назад">‹</button>
+            <div class="shelf-row" id="mix-cards"></div>
+            <button type="button" class="shelf-nav next" data-for="mix-cards" aria-label="Вперёд">›</button>
+          </div>
+        </section>
+
+        <section class="shelf">
+          <div class="shelf-head">
+            <h2>Дни недели</h2>
+            <span class="shelf-hint">сегодня подсвечен</span>
+          </div>
+          <div class="shelf-rail">
+            <button type="button" class="shelf-nav prev" data-for="weekday-cards" aria-label="Назад">‹</button>
+            <div class="shelf-row" id="weekday-cards"></div>
+            <button type="button" class="shelf-nav next" data-for="weekday-cards" aria-label="Вперёд">›</button>
+          </div>
+        </section>
+
+        <section class="shelf">
+          <div class="shelf-head">
+            <h2>Любимые песни</h2>
+            <span class="shelf-hint" id="fav-hint">♥ в плеере</span>
+          </div>
+          <div class="shelf-rail">
+            <button type="button" class="shelf-nav prev" data-for="home-favorites" aria-label="Назад">‹</button>
+            <div class="shelf-row smooth" id="home-favorites"></div>
+            <button type="button" class="shelf-nav next" data-for="home-favorites" aria-label="Вперёд">›</button>
+          </div>
+        </section>
+
+        <section class="shelf">
+          <div class="shelf-head">
+            <h2>Любимые артисты</h2>
+            <span class="shelf-hint">♥ на карточке артиста</span>
+          </div>
+          <div class="shelf-rail">
+            <button type="button" class="shelf-nav prev" data-for="home-fav-artists" aria-label="Назад">‹</button>
+            <div class="shelf-row smooth" id="home-fav-artists"></div>
+            <button type="button" class="shelf-nav next" data-for="home-fav-artists" aria-label="Вперёд">›</button>
+          </div>
+        </section>
+
+        <section class="shelf">
+          <div class="shelf-head">
+            <h2>Любимые альбомы</h2>
+            <span class="shelf-hint">♥ на карточке альбома</span>
+          </div>
+          <div class="shelf-rail">
+            <button type="button" class="shelf-nav prev" data-for="home-fav-albums" aria-label="Назад">‹</button>
+            <div class="shelf-row smooth" id="home-fav-albums"></div>
+            <button type="button" class="shelf-nav next" data-for="home-fav-albums" aria-label="Вперёд">›</button>
+          </div>
+        </section>
+
+        <section class="shelf">
+          <div class="shelf-head">
+            <h2>Похожее на любимое</h2>
+            <span class="shelf-hint" id="rec-hint">по звучанию</span>
+          </div>
+          <div class="shelf-rail">
+            <button type="button" class="shelf-nav prev" data-for="home-similar" aria-label="Назад">‹</button>
+            <div class="shelf-row smooth" id="home-similar"></div>
+            <button type="button" class="shelf-nav next" data-for="home-similar" aria-label="Вперёд">›</button>
+          </div>
+        </section>
+
+        <section class="shelf">
+          <div class="shelf-head">
+            <h2>Артисты</h2>
+            <div class="shelf-head-actions">
+              <button type="button" class="text-link" data-lib-tab="artists">все артисты</button>
+            </div>
+          </div>
+          <div class="shelf-rail">
+            <button type="button" class="shelf-nav prev" data-for="home-artists" aria-label="Назад">‹</button>
+            <div class="shelf-row smooth" id="home-artists"></div>
+            <button type="button" class="shelf-nav next" data-for="home-artists" aria-label="Вперёд">›</button>
+          </div>
+        </section>
+
+        <section class="shelf">
+          <div class="shelf-head">
+            <h2>Альбомы</h2>
+            <div class="shelf-head-actions">
+              <button type="button" class="text-link" data-lib-tab="albums">все альбомы</button>
+            </div>
+          </div>
+          <div class="shelf-rail">
+            <button type="button" class="shelf-nav prev" data-for="home-albums" aria-label="Назад">‹</button>
+            <div class="shelf-row smooth" id="home-albums"></div>
+            <button type="button" class="shelf-nav next" data-for="home-albums" aria-label="Вперёд">›</button>
+          </div>
+        </section>
+
+        <section class="shelf">
+          <div class="shelf-head">
+            <h2>Треки</h2>
+            <button type="button" class="text-link" data-lib-tab="tracks">вся библиотека</button>
+          </div>
+          <div class="shelf-rail">
+            <button type="button" class="shelf-nav prev" data-for="home-tracks" aria-label="Назад">‹</button>
+            <div class="shelf-row smooth" id="home-tracks"></div>
+            <button type="button" class="shelf-nav next" data-for="home-tracks" aria-label="Вперёд">›</button>
+          </div>
+        </section>
+
+        <section class="shelf">
+          <div class="shelf-head"><h2>Открытия</h2></div>
+          <div class="shelf-row" id="discover-cards">
+            <button type="button" class="mix-card tone-b" id="btn-discover-new" data-tips="new">
+              <div class="cover-blob blob-a"></div>
+              <strong>Новые альбомы</strong>
+              <span>Что недавно попало в библиотеку</span>
+              <div class="mix-meta">смотреть</div>
+            </button>
+            <button type="button" class="mix-card tone-c" id="btn-discover-old" data-tips="old">
+              <div class="cover-blob blob-b"></div>
+              <strong>Из старого</strong>
+              <span>Забытое, но близко к вкусу</span>
+              <div class="mix-meta">смотреть</div>
+            </button>
+          </div>
+          <div id="tips-panel" class="tips-panel hidden"></div>
+        </section>
+      </section>
+
+      <section id="view-player" class="view">
+        <div class="now-stage">
+          <div class="now-art" id="art">
+            <div class="art-fallback" id="art-fallback">♪</div>
+          </div>
+          <div class="now-meta">
+            <div class="label" id="mode-label">ничего не играет</div>
+            <h2 id="title">Выбери микс</h2>
+            <p id="artist">или запусти радио на главной</p>
+
+            <div class="progress-wrap">
+              <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Прогресс" />
+              <div class="time-row">
+                <span id="time-cur">0:00</span>
+                <span id="time-dur">0:00</span>
+              </div>
+            </div>
+
+            <audio id="audio" preload="metadata"></audio>
+
+            <div class="transport">
+              <button type="button" class="icon-btn" id="btn-later" title="В «Потом»">◷</button>
+              <button type="button" class="icon-btn" id="btn-dislike" title="Dislike">✕</button>
+              <button type="button" class="icon-btn play-btn" id="btn-play" title="Play/Pause">▶</button>
+              <button type="button" class="icon-btn primary-icon" id="btn-skip" title="Skip">⏭</button>
+              <button type="button" class="icon-btn" id="btn-like" title="Любимая песня">♥</button>
+            </div>
+            <div class="fav-extra">
+              <button type="button" class="chip" id="btn-fav-artist">♥ артист</button>
+              <button type="button" class="chip" id="btn-fav-album">♥ альбом</button>
+              <button type="button" class="chip" id="btn-similar-now">похожее</button>
+            </div>
+            <p class="hint-keys">Пробел — play/pause · N — skip · L — любимая песня</p>
+            <details class="lyrics-box" id="lyrics-box">
+              <summary>Текст песни</summary>
+              <pre id="lyrics-text" class="lyrics-text">—</pre>
+            </details>
+          </div>
+        </div>
+        <div class="queue-panel">
+          <div class="queue-head">
+            <div class="label" id="playlist-label">плейлист</div>
+            <span class="shelf-hint" id="queue-count"></span>
+          </div>
+          <ol id="playlist" class="playlist"></ol>
+          <ol id="queue" class="queue-fallback" hidden></ol>
+        </div>
+      </section>
+
+      <section id="view-library" class="view">
+        <h1 class="page-title">Библиотека</h1>
+        <p class="sub" id="lib-count">—</p>
+        <div class="seg" role="tablist" aria-label="Разделы библиотеки">
+          <button type="button" class="seg-btn active" data-lib="tracks">Треки</button>
+          <button type="button" class="seg-btn" data-lib="artists">Артисты</button>
+          <button type="button" class="seg-btn" data-lib="albums">Альбомы</button>
+          <button type="button" class="seg-btn" data-lib="favorites">Избранное</button>
+        </div>
+        <input id="lib-filter" type="search" placeholder="Поиск…" autocomplete="off" />
+        <ul id="lib-list" class="track-list"></ul>
+        <div id="lib-grid" class="lib-grid" hidden></div>
+      </section>
+
+      <section id="view-profile" class="view">
+        <h1 class="page-title">Профиль</h1>
+        <p class="sub">Вкус растёт вместе со слушанием</p>
+        <div id="profile-box" class="panel"></div>
+        <div id="metrics-box" class="panel"></div>
+        <div class="panel" id="share-box">
+          <strong>Публичное радио</strong>
+          <p class="sub" style="margin:.35rem 0 .75rem">Непрерывный MP3-поток для VLC и любых плееров. Слушатели не меняют твой вкус.</p>
+          <button type="button" class="btn" id="btn-share-radio-profile">Создать ссылку</button>
+          <ul id="share-list" class="share-list"></ul>
+        </div>
+        <button type="button" class="btn" id="btn-logout-profile" hidden>Выйти</button>
+      </section>
+    </main>
+
+    <footer class="mini-player" id="mini" hidden>
+      <button type="button" class="mini-main" id="mini-open">
+        <div class="mini-art" id="mini-art"></div>
+        <div class="mini-text">
+          <strong id="mini-title">—</strong>
+          <span id="mini-artist">—</span>
+        </div>
+      </button>
+      <button type="button" class="icon-btn sm" id="mini-play" title="Play/Pause">▶</button>
+      <button type="button" class="icon-btn sm" id="mini-skip" title="Skip">⏭</button>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

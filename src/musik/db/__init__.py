@@ -1,0 +1,37 @@
+from musik.db.schema import connect, init_db, utcnow
+from musik.db.store import (
+    counts,
+    ensure_db,
+    get_embedding,
+    get_track_by_path,
+    list_active_tracks,
+    list_tracks_needing_embedding,
+    mark_duplicates,
+    mark_feature_failed,
+    mark_missing_inactive,
+    save_embedding,
+    set_genres,
+    update_audio_scalars,
+    update_fingerprint_and_lufs,
+    upsert_track,
+)
+
+__all__ = [
+    "connect",
+    "init_db",
+    "utcnow",
+    "counts",
+    "ensure_db",
+    "get_embedding",
+    "get_track_by_path",
+    "list_active_tracks",
+    "list_tracks_needing_embedding",
+    "mark_duplicates",
+    "mark_feature_failed",
+    "mark_missing_inactive",
+    "save_embedding",
+    "set_genres",
+    "update_audio_scalars",
+    "update_fingerprint_and_lufs",
+    "upsert_track",
+]

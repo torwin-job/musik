@@ -1,0 +1,43 @@
+services:
+  player:
+    build:
+      context: .
+      dockerfile: Dockerfile.player
+    ports:
+      - "8787:8787"
+    env_file: .env
+    environment:
+      MUSIK_DB_PATH: /data/db/musik.db
+      MUSIK_LIBRARY: /music
+      MUSIK_WORKER_URL: http://worker:8790
+      MUSIK_WORKER_AUTOSTART: "0"
+      MUSIK_PLAYER_ADDR: ":8787"
+    volumes:
+      - musik-data:/data
+      - ${MUSIK_LIBRARY:-./data/music}:/music:ro
+    depends_on:
+      - worker
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file: .env
+    environment:
+      MUSIK_DB_PATH: /data/db/musik.db
+      MUSIK_LIBRARY: /music
+      MUSIK_DATA_DIR: /data
+      MUSIK_EMBEDDINGS_CACHE: /data/cache/embeddings
+      MUSIK_ARTWORK_CACHE: /data/cache/artwork
+      MUSIK_WORKER_ADDR: 0.0.0.0:8790
+      MUSIK_PLAYER_RELOAD_URL: http://player:8787/api/reload
+      MUSIK_NIGHTLY_MIXES_TIMEZONE: ${MUSIK_NIGHTLY_MIXES_TIMEZONE:-UTC}
+    volumes:
+      - musik-data:/data
+      - ${MUSIK_LIBRARY:-./data/music}:/music:ro
+    # no ports: — internal only
+    restart: unless-stopped
+
+volumes:
+  musik-data:
