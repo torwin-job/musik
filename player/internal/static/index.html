@@ -31,10 +31,15 @@
     })();
   </script>
   <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="musik" />
   <title>musik</title>
   <link rel="stylesheet" href="/fonts.css" />
   <link rel="stylesheet" href="/themes/base.css" />
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/style.css?v=retro17" />
   <script>
     (function () {
       try {
@@ -49,7 +54,7 @@
 <body>
   <div id="login-gate" class="login-gate" hidden>
     <form id="login-form" class="login-card" autocomplete="current-password">
-      <div class="brand">musik</div>
+      <div class="brand"><img class="brand-logo" src="/icons/logo.png" alt="" width="34" height="34" decoding="async" />musik</div>
       <p class="tagline">Введи пароль, чтобы открыть библиотеку</p>
       <label class="sr-only" for="login-password">Пароль</label>
       <input id="login-password" type="password" name="password" placeholder="Пароль" required autofocus />
@@ -61,7 +66,7 @@
   <div class="shell" id="app-shell">
     <header class="top">
       <div class="brand-block">
-        <div class="brand">musik</div>
+        <div class="brand"><img class="brand-logo" src="/icons/logo.png" alt="" width="34" height="34" decoding="async" />musik</div>
         <p class="tagline" id="maturity">твой локальный микс</p>
       </div>
       <nav class="tabs" aria-label="Разделы">
@@ -258,11 +263,10 @@
 
             <div class="transport">
               <div class="transport-btns">
-                <button type="button" class="icon-btn" id="btn-later" title="В «Потом»">◷</button>
                 <button type="button" class="icon-btn" id="btn-dislike" title="Dislike">✕</button>
                 <button type="button" class="icon-btn" id="btn-back" title="Назад"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5.6 5.2h2.2v13.6H5.6zm11.6.3v13.6L8.4 12z"/></svg></button>
                 <button type="button" class="icon-btn play-btn" id="btn-play" title="Play/Pause"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.75 5.5v13l10-6.5z"/></svg></button>
-                <button type="button" class="icon-btn primary-icon" id="btn-skip" title="Skip">⏭</button>
+                <button type="button" class="icon-btn" id="btn-skip" title="Skip"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.2 5.2h2.2v13.6h-2.2zM6.8 5.5v13.6L15.6 12z"/></svg></button>
                 <button type="button" class="icon-btn" id="btn-like" title="Любимая песня">♥</button>
               </div>
               <div class="volume-row">
@@ -271,6 +275,7 @@
               </div>
             </div>
             <div class="fav-extra">
+              <button type="button" class="chip queue-open" id="btn-queue-open" hidden>Дальше в радио</button>
               <button type="button" class="chip" id="btn-fav-artist">♥ артист</button>
               <button type="button" class="chip" id="btn-fav-album">♥ альбом</button>
               <button type="button" class="chip" id="btn-similar-now">похожее</button>
@@ -310,6 +315,21 @@
         <div class="lib-tools">
           <input id="lib-filter" type="search" placeholder="Поиск…" autocomplete="off" />
           <select id="lib-sort" aria-label="Сортировка"></select>
+        </div>
+        <div id="lib-artist-head" class="lib-artist-head" hidden>
+          <button type="button" class="text-link" id="lib-artist-back">← все артисты</button>
+          <div class="lib-artist-title">
+            <div class="lib-artist-photo" id="lib-artist-photo" hidden></div>
+            <div>
+              <h2 id="lib-artist-name"></h2>
+              <p class="sub" id="lib-artist-meta"></p>
+            </div>
+          </div>
+          <div class="lib-artist-actions">
+            <button type="button" class="tiny" id="lib-artist-play">▶ Слушать всё</button>
+            <button type="button" class="tiny" id="lib-artist-radio">Радио</button>
+            <button type="button" class="tiny" id="lib-artist-playlist">В плейлист</button>
+          </div>
         </div>
         <ul id="lib-list" class="track-list"></ul>
         <div id="lib-grid" class="lib-grid" hidden></div>
@@ -466,9 +486,38 @@
       </button>
       <button type="button" class="icon-btn sm" id="mini-back" title="Назад"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5.6 5.2h2.2v13.6H5.6zm11.6.3v13.6L8.4 12z"/></svg></button>
       <button type="button" class="icon-btn sm" id="mini-play" title="Play/Pause"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.75 5.5v13l10-6.5z"/></svg></button>
-      <button type="button" class="icon-btn sm" id="mini-skip" title="Skip">⏭</button>
+      <button type="button" class="icon-btn sm" id="mini-skip" title="Skip"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.2 5.2h2.2v13.6h-2.2zM6.8 5.5v13.6L15.6 12z"/></svg></button>
       <label class="mini-volume"><input class="slider" id="mini-volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Громкость"></label>
     </footer>
+
+    <nav class="mobile-nav" id="mobile-nav" aria-label="Разделы">
+      <button type="button" class="tab active" data-view="home" aria-label="Главная">
+        <svg class="mnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 3l9 8"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/></svg>
+        <span>Главная</span>
+      </button>
+      <button type="button" class="tab" data-view="player" aria-label="Сейчас играет">
+        <svg class="mnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor" stroke="none"/></svg>
+        <span>Сейчас</span>
+      </button>
+      <button type="button" class="tab" data-view="library" aria-label="Библиотека">
+        <svg class="mnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>
+        <span>Библиотека</span>
+      </button>
+      <button type="button" class="tab" data-view="collections" aria-label="Плейлисты">
+        <svg class="mnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 11h16M4 16h10M4 20h10"/></svg>
+        <span>Плейлисты</span>
+      </button>
+    </nav>
+  </div>
+
+  <div id="queue-modal" class="queue-modal" hidden>
+    <div class="queue-modal-card" role="dialog" aria-labelledby="queue-modal-title">
+      <div class="queue-modal-head">
+        <strong id="queue-modal-title">Дальше в радио</strong>
+        <button type="button" class="icon-btn sm" id="btn-queue-close" aria-label="Закрыть">✕</button>
+      </div>
+      <ol id="queue-modal-list" class="playlist"></ol>
+    </div>
   </div>
 
   <div id="pl-picker" class="pl-picker" hidden>
@@ -481,6 +530,6 @@
     </div>
   </div>
   <div id="toast" class="toast" hidden></div>
-  <script src="/app.js?v=retro4"></script>
+  <script src="/app.js?v=retro17"></script>
 </body>
 </html>

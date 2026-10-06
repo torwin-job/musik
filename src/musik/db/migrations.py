@@ -575,12 +575,79 @@ def _ranker_and_explore(conn: sqlite3.Connection) -> None:
     )
 
 
+def _remaster_marker(conn: sqlite3.Connection) -> None:
+    # The scanner keeps the full album tag (including "… (2001 Remastered)")
+    # and records whether the marker was present. Dedup uses the flag together
+    # with album and year to keep an original and its remaster apart.
+    _add_column(conn, "tracks", "is_remaster INTEGER NOT NULL DEFAULT 0")
+
+
+def _artist_segments(conn: sqlite3.Connection) -> None:
+    # Collaborator credits ("Thomas / БИ-2 / Сплин") are parsed once during the
+    # scan; the segments live here so every reader (API, UI) shows the same
+    # split and no client has to re-implement the parsing rule.
+    _add_column(conn, "tracks", "artist_segments TEXT")
+
+
+def _playback_state(conn: sqlite3.Connection) -> None:
+    # One row per owner: which session/track was playing, where, and on which
+    # device. A page reload or another device reads it to resume the track at
+    # the same position; listened_sec keeps the listen statistics continuous.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS playback_state (
+            owner_scope TEXT PRIMARY KEY DEFAULT 'local',
+            session_id TEXT NOT NULL DEFAULT '',
+            track_id INTEGER NOT NULL DEFAULT 0,
+            position_sec REAL NOT NULL DEFAULT 0,
+            listened_sec REAL NOT NULL DEFAULT 0,
+            playing INTEGER NOT NULL DEFAULT 0,
+            client_id TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _artist_photos_and_lookups(conn: sqlite3.Connection) -> None:
+    # Artist photos fetched online (Deezer), keyed by the normalized artist
+    # name ("сплин"). status='missing' remembers a lookup without a match so
+    # the hourly run does not ask again every time.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS artist_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name_key TEXT NOT NULL UNIQUE,
+            artist TEXT NOT NULL,
+            path TEXT,
+            status TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT '',
+            checked_at TEXT NOT NULL
+        )
+        """
+    )
+    # Album cover lookups without a match, for the same reason.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS artwork_lookups (
+            album_key TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            checked_at TEXT NOT NULL
+        )
+        """
+    )
+
+
 MIGRATIONS = (
     Migration(1, "baseline", _baseline),
     Migration(2, "future_data_foundation", _future_data_foundation),
     Migration(3, "recommendation_lifecycle_and_taste", _recommendation_lifecycle_and_taste),
     Migration(4, "playlists_contexts_queue", _playlists_contexts_queue),
     Migration(5, "ranker_and_explore", _ranker_and_explore),
+    Migration(6, "remaster_marker", _remaster_marker),
+    Migration(7, "artist_segments", _artist_segments),
+    Migration(8, "playback_state", _playback_state),
+    Migration(9, "artist_photos_and_lookups", _artist_photos_and_lookups),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version
 

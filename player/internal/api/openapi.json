@@ -965,6 +965,47 @@
         }
       }
     },
+    "/api/artist-photos": {
+      "get": {
+        "summary": "Artist photos found online: normalized artist name -> photo URL",
+        "responses": {
+          "200": {
+            "description": "Photo map"
+          }
+        }
+      }
+    },
+    "/api/artist-photos/{id}": {
+      "get": {
+        "summary": "Artist photo (JPEG thumbnail; ?w=96|256|640, ?full=1 for the original)",
+        "responses": {
+          "200": {
+            "description": "Image"
+          },
+          "404": {
+            "description": "Unknown photo"
+          }
+        }
+      }
+    },
+    "/api/playback/state": {
+      "get": {
+        "summary": "Last playback state (session, track, position) for resuming on reload or another device",
+        "responses": {
+          "200": {
+            "description": "State or null"
+          }
+        }
+      },
+      "put": {
+        "summary": "Save playback state from the active device",
+        "responses": {
+          "200": {
+            "description": "Saved state"
+          }
+        }
+      }
+    },
     "/api/later": {
       "get": {
         "summary": "List listen-later tracks",

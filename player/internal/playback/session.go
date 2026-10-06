@@ -40,7 +40,7 @@ func (s *Session) Lock()   { s.mu.Lock() }
 func (s *Session) Unlock() { s.mu.Unlock() }
 
 func (e *Engine) NewSession(mode string) *Session {
-	id := strconv.FormatInt(time.Now().UnixNano(), 36)
+	id := newSessionID()
 	sess := &Session{
 		ID:        id,
 		Mode:      mode,
@@ -54,6 +54,13 @@ func (e *Engine) NewSession(mode string) *Session {
 	e.sessionsMu.Unlock()
 	e.persistLocked(sess)
 	return sess
+}
+
+// newSessionID keeps the readable, time-ordered prefix but adds a random
+// suffix: the clock alone repeats under concurrent starts (Windows ticks in
+// ~0.5 ms steps), and two clients then shared — and overwrote — one session.
+func newSessionID() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 36) + db.NewID()[:8]
 }
 
 func (e *Engine) Get(id string) *Session {

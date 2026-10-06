@@ -436,6 +436,100 @@ def lyrics_cmd(
     console.print(table)
 
 
+@app.command("artwork")
+def artwork_cmd(
+    limit: Optional[int] = typer.Option(None, "--limit", help="Сколько треков обработать"),
+    force: bool = typer.Option(False, "--force", help="Перекачать даже если обложка уже есть"),
+    track: Optional[str] = typer.Option(
+        None, "--track", "-t", help="Один трек: id или поисковая строка"
+    ),
+    delay: float = typer.Option(
+        3.0, "--delay", help="Пауза между запросами к iTunes (сек); быстрее ~20/мин — HTTP 429"
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Скачать обложки альбомов из интернета (iTunes Search API)."""
+    _setup_logging(verbose)
+    ensure_db()
+    from musik.artwork import fetch_library_artwork
+    from musik.artwork.online import fetch_cover
+    from musik.artwork.pipeline import save_cover
+    from musik.db.store import save_artwork_path
+
+    if track:
+        tid = _resolve_track_arg(track)
+        meta = get_track(tid)
+        if not meta:
+            console.print(f"[red]Нет трека {tid}[/red]")
+            raise typer.Exit(1)
+        hit = fetch_cover(
+            artist=meta.get("artist") or "",
+            album=meta.get("album") or "",
+        )
+        if hit is None:
+            console.print("[yellow]Обложка не найдена[/yellow]")
+            raise typer.Exit(2)
+        md5 = meta.get("file_md5")
+        if not md5:
+            console.print("[red]У трека нет file_md5[/red]")
+            raise typer.Exit(1)
+        path = save_cover(str(md5), hit)
+        save_artwork_path(tid, path)
+        console.print(f"[green]OK[/green] track={tid} -> {path}")
+        return
+
+    result = fetch_library_artwork(limit=limit, force=force, delay_sec=delay)
+    table = Table(title="Artwork result")
+    table.add_column("metric")
+    table.add_column("value", justify="right")
+    for k, v in [
+        ("from folders", result.local),
+        ("queued", result.total),
+        ("found", result.found),
+        ("missing", result.missing),
+        ("failed", result.failed),
+    ]:
+        table.add_row(k, str(v))
+    console.print(table)
+    if result.rate_limited:
+        console.print(
+            "[red]iTunes ограничил запросы (HTTP 429/403) — прогон остановлен. "
+            "Запусти позже, уже скачанные обложки пропустятся.[/red]"
+        )
+        raise typer.Exit(3)
+
+
+
+@app.command("artist-photos")
+def artist_photos_cmd(
+    limit: Optional[int] = typer.Option(None, "--limit", help="Сколько артистов обработать"),
+    force: bool = typer.Option(
+        False, "--force", help="Искать заново, включая уже найденных и ненайденных"
+    ),
+    delay: float = typer.Option(0.5, "--delay", help="Пауза между запросами к Deezer (сек)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Скачать фото артистов из интернета (Deezer API)."""
+    _setup_logging(verbose)
+    ensure_db()
+    from musik.artwork.artists import fetch_library_artist_photos
+
+    result = fetch_library_artist_photos(limit=limit, force=force, delay_sec=delay)
+    table = Table(title="Artist photos")
+    table.add_column("metric")
+    table.add_column("value", justify="right")
+    for k, v in [
+        ("queued", result.total),
+        ("found", result.found),
+        ("missing", result.missing),
+        ("failed", result.failed),
+    ]:
+        table.add_row(k, str(v))
+    console.print(table)
+    if result.rate_limited:
+        console.print("[red]Deezer ограничил запросы — прогон остановлен, запусти позже.[/red]")
+        raise typer.Exit(3)
+
 def _print_playlist(pl: dict) -> None:
     console.print(f"[bold]#{pl['id']}[/bold] [{pl['kind']}] {pl['name']}  ({pl['created_at']})")
     table = Table()

@@ -42,7 +42,13 @@ func (s *Service) ServeArtwork(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no artwork", http.StatusNotFound)
 		return
 	}
+	s.ServeImage(w, r, strconv.FormatInt(id, 10), path)
+}
 
+// ServeImage serves path as a cached JPEG thumbnail (96/256/640, ?w=) or the
+// original for ?full=1. key names the thumbnail files and must be unique per
+// image source (track id for covers, "artist<id>" for artist photos).
+func (s *Service) ServeImage(w http.ResponseWriter, r *http.Request, key, path string) {
 	if r.URL.Query().Get("full") == "1" {
 		w.Header().Set("Cache-Control", "private, max-age="+strconv.Itoa(artworkOriginalMaxAge))
 		s.serveArtworkFile(w, r, path, imageContentType(path))
@@ -57,7 +63,7 @@ func (s *Service) ServeArtwork(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "private, max-age="+strconv.Itoa(artworkThumbMaxAge))
-	if thumb, err := s.ensureArtworkThumbnail(id, path, maxWidth); err == nil && thumb != "" {
+	if thumb, err := s.ensureArtworkThumbnail(key, path, maxWidth); err == nil && thumb != "" {
 		s.serveArtworkFile(w, r, thumb, "image/jpeg")
 		return
 	}
@@ -113,12 +119,12 @@ func absInt(v int) int {
 	return v
 }
 
-func (s *Service) ensureArtworkThumbnail(id int64, srcPath string, maxWidth int) (string, error) {
+func (s *Service) ensureArtworkThumbnail(key, srcPath string, maxWidth int) (string, error) {
 	dir := s.artworkCacheDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	dst := filepath.Join(dir, strconv.FormatInt(id, 10)+"_w"+strconv.Itoa(maxWidth)+".jpg")
+	dst := filepath.Join(dir, key+"_w"+strconv.Itoa(maxWidth)+".jpg")
 	srcInfo, err := os.Stat(srcPath)
 	if err != nil {
 		return "", err
