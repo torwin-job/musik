@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -124,6 +126,9 @@ func staticCacheControl(path string) string {
 	if strings.HasPrefix(path, "/fonts/") && strings.HasSuffix(strings.ToLower(path), ".woff2") {
 		return "public, max-age=31536000, immutable"
 	}
+	if strings.HasPrefix(path, "/icons/") {
+		return "public, max-age=604800"
+	}
 	switch path {
 	case "/", "", "/index.html":
 		// Revalidate the page itself: with max-age=3600 a browser keeps an old
@@ -199,12 +204,33 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{
 		"ok": true, "version": Version, "api_version": APIVersion,
 		"auth": s.Auth != nil && s.Auth.Cfg.Enabled(),
+		// Open pages compare it with the value they loaded with and reload
+		// themselves after a deploy, so no device keeps running old JS.
+		"static": s.staticVersion(),
 	}
 	if s.Auth == nil || !s.Auth.Cfg.Enabled() || s.Auth.Authorized(r) {
 		out["tracks"] = s.Idx.Size()
 		out["dim"] = s.Idx.Dim()
 	}
 	writeJSON(w, out)
+}
+
+// staticVersion hashes the UI files. Hashed on every call: they are small and
+// a static dir on disk (MUSIK_STATIC_DIR) can change without a restart.
+func (s *Server) staticVersion() string {
+	if s.Static == nil {
+		return ""
+	}
+	h := sha256.New()
+	for _, name := range []string{"index.html", "app.js", "style.css"} {
+		f, err := s.Static.Open(name)
+		if err != nil {
+			continue
+		}
+		_, _ = io.Copy(h, f)
+		_ = f.Close()
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -243,10 +269,16 @@ func (s *Server) handleManifest(w http.ResponseWriter, _ *http.Request) {
   "name": "musik",
   "short_name": "musik",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#141210",
   "theme_color": "#c45c26",
-  "description": "Local smart music player"
+  "description": "Local smart music player",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
 }`))
 }
 

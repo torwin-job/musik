@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS tracks (
     lufs            REAL,
     is_duplicate_of INTEGER REFERENCES tracks(id),
     is_active       INTEGER NOT NULL DEFAULT 1,
+    is_remaster     INTEGER NOT NULL DEFAULT 0,
+    -- JSON array of collaborator segments parsed at scan time.
+    artist_segments TEXT,
     artwork_path    TEXT,
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL

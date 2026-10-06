@@ -30,7 +30,7 @@ func openTestServer(t *testing.T) *api.Server {
 	t.Cleanup(func() { _ = store.Close() })
 
 	cfg := config.Config{
-		DBPath: path, QueueSize: 6, AuthDisabled: true,
+		Root: dir, DBPath: path, QueueSize: 6, AuthDisabled: true,
 		ProfileFormingAt: 3, ProfileReadyAt: 8, ExploreRatio: 0.15,
 		DiscoverExploreRatio: 0.35, WorkerURL: "http://127.0.0.1:1",
 		WorkerAutostart: false,

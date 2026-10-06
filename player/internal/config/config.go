@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	Root                 string // project root: .env, scripts/, .venv
 	DBPath               string
 	ThemesDir            string
 	Library              string
@@ -45,6 +46,7 @@ func Load() Config {
 	root := findRoot()
 	db := env("MUSIK_DB_PATH", filepath.Join(root, "data", "db", "musik.db"))
 	return Config{
+		Root:                 root,
 		DBPath:               db,
 		ThemesDir:            env("MUSIK_THEMES", filepath.Join(filepath.Dir(filepath.Dir(db)), "themes")),
 		Library:              env("MUSIK_LIBRARY", filepath.Join(root, "data", "music")),

@@ -438,3 +438,14 @@ func TestDislikeAndEarlySkipStayOffPositiveTaste(t *testing.T) {
 		t.Fatal("early skip should stay on session negatives")
 	}
 }
+
+func TestNewSessionIDUniqueWithinOneClockTick(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 10000; i++ {
+		id := newSessionID()
+		if seen[id] {
+			t.Fatalf("duplicate session id %q after %d ids", id, i)
+		}
+		seen[id] = true
+	}
+}

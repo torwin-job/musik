@@ -965,6 +965,120 @@
         }
       }
     },
+    "/api/settings": {
+      "get": {
+        "summary": "Server settings: saved (.env) vs running listen address, public URL, music folder; phone connection info",
+        "responses": {
+          "200": {
+            "description": "Settings"
+          },
+          "403": {
+            "description": "Open mode (no password): only from this computer"
+          }
+        }
+      },
+      "put": {
+        "summary": "Save addr / public_base_url / library to .env (applied after restart)",
+        "responses": {
+          "200": {
+            "description": "Saved settings"
+          },
+          "400": {
+            "description": "Invalid value"
+          }
+        }
+      }
+    },
+    "/api/settings/dirs": {
+      "get": {
+        "summary": "Subfolders of ?path= on the server for the music folder picker (empty path = drives / roots)",
+        "responses": {
+          "200": {
+            "description": "Folder listing"
+          }
+        }
+      }
+    },
+    "/api/settings/external-ip": {
+      "get": {
+        "summary": "Public IP of this server as seen from the internet (asked from api.ipify.org, cached 10 min; ?refresh=1)",
+        "responses": {
+          "200": {
+            "description": "External IP"
+          },
+          "502": {
+            "description": "No lookup service reachable"
+          }
+        }
+      }
+    },
+    "/api/settings/qr": {
+      "get": {
+        "summary": "SVG QR to add this server in the phone apps: musik://connect?url=<?url>&token=<API token>",
+        "responses": {
+          "200": {
+            "description": "image/svg+xml"
+          },
+          "400": {
+            "description": "Missing or invalid url"
+          }
+        }
+      }
+    },
+    "/api/settings/restart": {
+      "post": {
+        "summary": "Restart worker and player with the saved settings",
+        "responses": {
+          "200": {
+            "description": "Restart scheduled"
+          },
+          "501": {
+            "description": "No launcher on this host"
+          }
+        }
+      }
+    },
+    "/api/artist-photos": {
+      "get": {
+        "summary": "Artist photos found online: normalized artist name -> photo URL",
+        "responses": {
+          "200": {
+            "description": "Photo map"
+          }
+        }
+      }
+    },
+    "/api/artist-photos/{id}": {
+      "get": {
+        "summary": "Artist photo (JPEG thumbnail; ?w=96|256|640, ?full=1 for the original)",
+        "responses": {
+          "200": {
+            "description": "Image"
+          },
+          "404": {
+            "description": "Unknown photo"
+          }
+        }
+      }
+    },
+    "/api/playback/state": {
+      "get": {
+        "summary": "Last playback state (session, track, position) for resuming on reload or another device",
+        "responses": {
+          "200": {
+            "description": "State or null"
+          }
+        }
+      },
+      "put": {
+        "summary": "Save playback state from the active device",
+        "responses": {
+          "200": {
+            "description": "Saved state"
+          }
+        }
+      }
+    },
     "/api/later": {
       "get": {
         "summary": "List listen-later tracks",

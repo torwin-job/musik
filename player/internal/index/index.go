@@ -21,6 +21,8 @@ type Meta struct {
 	Path         string
 	Title        string
 	Artist       string
+	// Artists holds the collaborator segments from the database (row.artists).
+	Artists      []string
 	Album        string
 	Duration     float64
 	FileMD5      string
@@ -151,7 +153,8 @@ func (idx *Index) Load(rows []db.TrackRow) error {
 			lastPlayed, _ = time.Parse(time.RFC3339, r.LastPlayedAt)
 		}
 		meta[i] = Meta{
-			ID: r.ID, Path: r.Path, Title: r.Title, Artist: r.Artist, Album: r.Album,
+			ID: r.ID, Path: r.Path, Title: r.Title, Artist: r.Artist,
+			Artists: r.ArtistSegments, Album: r.Album,
 			Duration: r.Duration, FileMD5: r.FileMD5, CreatedAt: created,
 			ArtworkPath: r.ArtworkPath, ClusterID: r.ClusterID,
 			Shown: r.Shown, SkipEarly: r.SkipEarly, Completed: r.Completed,
@@ -166,21 +169,26 @@ func (idx *Index) Load(rows []db.TrackRow) error {
 		if key := SongKey(r.Artist, r.Title); key != "" {
 			songKeyToIDs[key] = append(songKeyToIDs[key], r.ID)
 		}
-		artistKey := normName(r.Artist)
 		albumKey := normName(r.Album)
-		if artistKey != "" {
-			artistRows[artistKey] = append(artistRows[artistKey], i)
-			if _, ok := artistNames[artistKey]; !ok {
-				artistNames[artistKey] = strings.TrimSpace(r.Artist)
+		for _, name := range trackArtistNames(r.Artist, r.ArtistSegments) {
+			key := normName(name)
+			if key == "" {
+				continue
+			}
+			artistRows[key] = append(artistRows[key], i)
+			if _, ok := artistNames[key]; !ok {
+				artistNames[key] = name
+			}
+			if albumKey != "" {
+				aKey := key + "\x00" + albumKey
+				artistAlbums[aKey] = append(artistAlbums[aKey], i)
+				if _, ok := albumNames[aKey]; !ok {
+					albumNames[aKey] = [2]string{name, strings.TrimSpace(r.Album)}
+				}
 			}
 		}
 		if albumKey != "" {
 			albumRows[albumKey] = append(albumRows[albumKey], i)
-			key := artistKey + "\x00" + albumKey
-			artistAlbums[key] = append(artistAlbums[key], i)
-			if _, ok := albumNames[key]; !ok {
-				albumNames[key] = [2]string{strings.TrimSpace(r.Artist), strings.TrimSpace(r.Album)}
-			}
 		}
 	}
 	artists := buildGroupCentroids(mat, dim, artistRows, func(key string) (string, string) {
@@ -338,6 +346,7 @@ func (idx *Index) RowsForAlbum(artist, album string) []int {
 	return append([]int(nil), idx.artistAlbums[wantA+"\x00"+wantAl]...)
 }
 
+// normName lowercases and trims an artist/album key.
 func normName(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
