@@ -7,6 +7,8 @@ from typing import Any
 
 from mutagen import File as MutagenFile
 
+from musik.scanner.collaborators import split_collaborators
+
 
 @dataclass
 class TrackTags:
@@ -21,6 +23,33 @@ class TrackTags:
     sample_rate: int | None = None
     channels: int | None = None
     artwork_bytes: bytes | None = None
+    # Album tag carried a remaster marker ("... (2001 Remastered)").
+    is_remaster: bool = False
+    # Collaborator segments parsed once here and stored in the database.
+    artist_segments: list[str] = field(default_factory=list)
+
+
+# Remaster markers seen in real album tags:
+#   "Lovedrive (2001 Remastered)", "Slippery When Wet (Digitally Remastered)",
+#   "Album - Remastered", "Album [Remastered 2011]", "Альбом (ремастер 2024)".
+# Years in parentheses that are not remaster markers ("... (1998)") survive.
+_REMASTER_RE = re.compile(
+    r"\s*[(\[][^\)\]]*(?:remaster|ремаст)[^\)\]]*[)\]]"
+    r"|\s*[-–—]\s*(?:remaster|ремаст)\w*"
+    r"|\s+(?:remastered|ремастер)\s*$",
+    re.IGNORECASE,
+)
+
+
+def detect_remaster(album: str | None) -> bool:
+    """True when an album tag carries a remaster marker.
+
+    The album name itself is stored unchanged. Album grouping ignores the year,
+    so stripping "… (2001 Remastered)" would collapse an original and its
+    remaster into one album with two copies of every track; keeping the full
+    name (plus the ``is_remaster`` flag for dedup) keeps them apart.
+    """
+    return bool(album and _REMASTER_RE.search(album))
 
 
 def _first(val: Any) -> str | None:
@@ -77,6 +106,7 @@ def read_tags(path: Path) -> TrackTags:
             tags.title = _first(audio.tags.get("title"))
             tags.artist = _first(audio.tags.get("artist"))
             tags.album = _first(audio.tags.get("album"))
+            tags.is_remaster = detect_remaster(tags.album)
             tags.year = _parse_year(_first(audio.tags.get("date")) or _first(audio.tags.get("year")))
             tags.track_number = _parse_track_no(_first(audio.tags.get("tracknumber")))
             genre_raw = audio.tags.get("genre")
@@ -120,4 +150,5 @@ def read_tags(path: Path) -> TrackTags:
         if not re.match(r"^\d{4}", parent):
             tags.artist = tags.artist or parent
 
+    tags.artist_segments = split_collaborators(tags.artist)
     return tags

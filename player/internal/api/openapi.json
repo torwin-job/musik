@@ -965,6 +965,24 @@
         }
       }
     },
+    "/api/playback/state": {
+      "get": {
+        "summary": "Last playback state (session, track, position) for resuming on reload or another device",
+        "responses": {
+          "200": {
+            "description": "State or null"
+          }
+        }
+      },
+      "put": {
+        "summary": "Save playback state from the active device",
+        "responses": {
+          "200": {
+            "description": "Saved state"
+          }
+        }
+      }
+    },
     "/api/later": {
       "get": {
         "summary": "List listen-later tracks",

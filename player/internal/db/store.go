@@ -12,7 +12,7 @@ type Store struct {
 	DB *sql.DB
 }
 
-const SupportedSchemaVersion = 5
+const SupportedSchemaVersion = 8
 
 func mondayZeroWeekday(day time.Weekday) int {
 	return (int(day) + 6) % 7
@@ -23,6 +23,8 @@ type TrackRow struct {
 	Path        string
 	Title       string
 	Artist      string
+	// ArtistSegments is the collaborator split parsed at scan time (row.artists).
+	ArtistSegments []string
 	Album       string
 	Duration    float64
 	FileMD5     string

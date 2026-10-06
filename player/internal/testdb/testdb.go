@@ -18,7 +18,8 @@ CREATE TABLE tracks (
  artist TEXT, album TEXT, year INTEGER, duration REAL, lufs REAL,
  bitrate INTEGER, sample_rate INTEGER, channels INTEGER,
  is_active INTEGER NOT NULL DEFAULT 1,
- is_duplicate_of INTEGER, artwork_path TEXT, created_at TEXT
+ is_duplicate_of INTEGER, artwork_path TEXT, created_at TEXT,
+ is_remaster INTEGER NOT NULL DEFAULT 0, artist_segments TEXT
 );
 CREATE TABLE features (
  track_id INTEGER PRIMARY KEY, status TEXT, cluster_id INTEGER, embedding BLOB,
@@ -103,6 +104,12 @@ CREATE TABLE play_sessions (
  playlist_kind TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL, current_item_json TEXT,
  taste_state_schema_version INTEGER, taste_state_json TEXT,
  active_contexts_json TEXT, transition_profile TEXT NOT NULL DEFAULT 'smooth'
+);
+CREATE TABLE playback_state (
+ owner_scope TEXT PRIMARY KEY DEFAULT 'local', session_id TEXT NOT NULL DEFAULT '',
+ track_id INTEGER NOT NULL DEFAULT 0, position_sec REAL NOT NULL DEFAULT 0,
+ listened_sec REAL NOT NULL DEFAULT 0, playing INTEGER NOT NULL DEFAULT 0,
+ client_id TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
 );
 CREATE TABLE lyrics (
  track_id INTEGER PRIMARY KEY, plain_lyrics TEXT NOT NULL DEFAULT '',
@@ -202,7 +209,7 @@ CREATE TABLE radio_prefs (
  explore_lo REAL NOT NULL DEFAULT 0.10, explore_hi REAL NOT NULL DEFAULT 0.40,
  updated_at TEXT NOT NULL
 );
-PRAGMA user_version = 5;
+ PRAGMA user_version = 8;
 `
 
 func Create(path string) error {
