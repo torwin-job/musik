@@ -124,6 +124,9 @@ func staticCacheControl(path string) string {
 	if strings.HasPrefix(path, "/fonts/") && strings.HasSuffix(strings.ToLower(path), ".woff2") {
 		return "public, max-age=31536000, immutable"
 	}
+	if strings.HasPrefix(path, "/icons/") {
+		return "public, max-age=604800"
+	}
 	switch path {
 	case "/", "", "/index.html":
 		// Revalidate the page itself: with max-age=3600 a browser keeps an old
@@ -243,10 +246,16 @@ func (s *Server) handleManifest(w http.ResponseWriter, _ *http.Request) {
   "name": "musik",
   "short_name": "musik",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#141210",
   "theme_color": "#c45c26",
-  "description": "Local smart music player"
+  "description": "Local smart music player",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
 }`))
 }
 

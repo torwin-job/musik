@@ -436,6 +436,60 @@ def lyrics_cmd(
     console.print(table)
 
 
+@app.command("artwork")
+def artwork_cmd(
+    limit: Optional[int] = typer.Option(None, "--limit", help="Сколько треков обработать"),
+    force: bool = typer.Option(False, "--force", help="Перекачать даже если обложка уже есть"),
+    track: Optional[str] = typer.Option(
+        None, "--track", "-t", help="Один трек: id или поисковая строка"
+    ),
+    delay: float = typer.Option(0.35, "--delay", help="Пауза между запросами к iTunes (сек)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Скачать обложки альбомов из интернета (iTunes Search API)."""
+    _setup_logging(verbose)
+    ensure_db()
+    from musik.artwork import fetch_library_artwork
+    from musik.artwork.online import fetch_cover
+    from musik.artwork.pipeline import save_cover
+    from musik.db.store import save_artwork_path
+
+    if track:
+        tid = _resolve_track_arg(track)
+        meta = get_track(tid)
+        if not meta:
+            console.print(f"[red]Нет трека {tid}[/red]")
+            raise typer.Exit(1)
+        hit = fetch_cover(
+            artist=meta.get("artist") or "",
+            album=meta.get("album") or "",
+        )
+        if hit is None:
+            console.print("[yellow]Обложка не найдена[/yellow]")
+            raise typer.Exit(2)
+        md5 = meta.get("file_md5")
+        if not md5:
+            console.print("[red]У трека нет file_md5[/red]")
+            raise typer.Exit(1)
+        path = save_cover(str(md5), hit)
+        save_artwork_path(tid, path)
+        console.print(f"[green]OK[/green] track={tid} -> {path}")
+        return
+
+    result = fetch_library_artwork(limit=limit, force=force, delay_sec=delay)
+    table = Table(title="Artwork result")
+    table.add_column("metric")
+    table.add_column("value", justify="right")
+    for k, v in [
+        ("queued", result.total),
+        ("found", result.found),
+        ("missing", result.missing),
+        ("failed", result.failed),
+    ]:
+        table.add_row(k, str(v))
+    console.print(table)
+
+
 def _print_playlist(pl: dict) -> None:
     console.print(f"[bold]#{pl['id']}[/bold] [{pl['kind']}] {pl['name']}  ({pl['created_at']})")
     table = Table()
