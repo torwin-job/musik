@@ -355,13 +355,32 @@ function wireAllShelves() {
   });
 }
 
+// Collaborator segments are parsed once at scan time and delivered by the API
+// (row.artists). The UI never re-splits a credit — it only shows what it got.
+function trackArtists(t) {
+  const list = Array.isArray(t?.artists)
+    ? t.artists.map((s) => String(s || "").trim()).filter(Boolean)
+    : [];
+  if (list.length) return list;
+  const raw = String(t?.artist || "").trim();
+  return raw ? [raw] : [];
+}
+
+function primaryArtist(t) {
+  return trackArtists(t)[0] || String(t?.artist || "").trim();
+}
+
 async function loadFavorites() {
   try {
     const data = await api("/api/favorites");
     favoriteIds = new Set((data.ids || []).map(Number));
-    favoriteArtists = new Set((data.artists || []).map((a) => a.artist));
+    favoriteArtists = new Set(
+      (data.artists || []).map((a) => String(a.artist || "").trim()).filter(Boolean)
+    );
     favoriteAlbums = new Set(
-      (data.albums || []).map((a) => albumKey(a.artist, a.album))
+      (data.albums || [])
+        .map((a) => albumKey(String(a.artist || "").trim(), a.album))
+        .filter((k) => !k.startsWith("\0"))
     );
     return data;
   } catch (_) {
@@ -387,8 +406,9 @@ function setEntityFavChips() {
     if (b) b.classList.remove("on");
     return;
   }
-  if (a) a.classList.toggle("on", favoriteArtists.has(current.artist));
-  if (b) b.classList.toggle("on", favoriteAlbums.has(albumKey(current.artist, current.album)));
+  const artistOn = trackArtists(current).some((s) => favoriteArtists.has(s));
+  if (a) a.classList.toggle("on", artistOn);
+  if (b) b.classList.toggle("on", favoriteAlbums.has(albumKey(primaryArtist(current), current.album)));
 }
 
 async function toggleFavorite(payload, { withLike = true } = {}) {
@@ -397,6 +417,9 @@ async function toggleFavorite(payload, { withLike = true } = {}) {
       ? { type: "track", track_id: Number(payload) }
       : payload;
   if (!body.type) body.type = "track";
+  if (body.type === "artist" || body.type === "album") {
+    body.artist = String(body.artist || "").trim();
+  }
   const data = await api("/api/favorites/toggle", {
     method: "POST",
     body: JSON.stringify(body),
@@ -409,12 +432,15 @@ async function toggleFavorite(payload, { withLike = true } = {}) {
     toast(data.favorited ? "Любимая песня" : "Песня убрана из любимых");
     if (data.favorited && withLike) postEvent("like").catch(() => {});
   } else if (data.type === "artist" || body.type === "artist") {
-    const name = data.artist || body.artist;
+    const name = String(data.artist || body.artist || "").trim();
     if (data.favorited) favoriteArtists.add(name);
     else favoriteArtists.delete(name);
     toast(data.favorited ? "Любимый артист" : "Артист убран");
   } else if (data.type === "album" || body.type === "album") {
-    const key = albumKey(data.artist || body.artist, data.album || body.album);
+    const key = albumKey(
+      String(data.artist || body.artist || "").trim(),
+      data.album || body.album
+    );
     if (data.favorited) favoriteAlbums.add(key);
     else favoriteAlbums.delete(key);
     toast(data.favorited ? "Любимый альбом" : "Альбом убран");
@@ -429,20 +455,23 @@ function groupCatalog(tracks) {
   const artists = new Map();
   const albums = new Map();
   for (const t of tracks) {
-    const artist = (t.artist || "Unknown").trim() || "Unknown";
-    if (!artists.has(artist)) {
-      artists.set(artist, { artist, tracks: 0, cover: t.artwork || null, sampleId: t.id });
+    const segments = trackArtists(t);
+    for (const artist of segments.length ? segments : ["Unknown"]) {
+      if (!artists.has(artist)) {
+        artists.set(artist, { artist, tracks: 0, cover: t.artwork || null, sampleId: t.id });
+      }
+      const a = artists.get(artist);
+      a.tracks += 1;
+      if (!a.cover && t.artwork) a.cover = t.artwork;
     }
-    const a = artists.get(artist);
-    a.tracks += 1;
-    if (!a.cover && t.artwork) a.cover = t.artwork;
 
     const album = (t.album || "").trim();
     if (!album) continue;
-    const key = artist + "\0" + album;
+    const albumArtist = primaryArtist(t) || "Unknown";
+    const key = albumArtist + "\0" + album;
     if (!albums.has(key)) {
       albums.set(key, {
-        artist,
+        artist: albumArtist,
         album,
         tracks: 0,
         cover: t.artwork || null,
@@ -525,13 +554,18 @@ function fillSortSelect(el, tab, current) {
 
 function tracksOfArtist(artist) {
   const name = (artist || "Unknown").trim() || "Unknown";
-  return library.filter((t) => ((t.artist || "Unknown").trim() || "Unknown") === name);
+  return library.filter((t) =>
+    trackArtists(t).some((seg) => seg.toLowerCase() === name.toLowerCase())
+  );
 }
 
 function tracksOfAlbum(artist, album) {
-  const a = (artist || "").trim();
+  const a = (artist || "").trim().toLowerCase();
   const al = (album || "").trim();
-  return library.filter((t) => (t.artist || "").trim() === a && (t.album || "").trim() === al);
+  return library.filter((t) => {
+    if ((t.album || "").trim() !== al) return false;
+    return trackArtists(t).some((seg) => seg.toLowerCase() === a);
+  });
 }
 
 function coverImgHTML(src, width = 256, height = 256) {
