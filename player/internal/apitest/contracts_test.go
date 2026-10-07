@@ -115,6 +115,36 @@ func TestStreamOriginalAndErrors(t *testing.T) {
 	}
 }
 
+// Browsers refuse a FLAC that starts with an ID3v2 tag; the stream skips the
+// tag, ranges included, and leaves other files byte for byte.
+func TestStreamSkipsID3InFrontOfFLAC(t *testing.T) {
+	server := openTestServer(t)
+	tag := []byte{'I', 'D', '3', 4, 0, 0, 0, 0, 0, 5, 'p', 'a', 'd', 0, 0}
+	flac := []byte("fLaC-stream-body")
+	path := filepath.Join(t.TempDir(), "tagged.flac")
+	if err := os.WriteFile(path, append(append([]byte{}, tag...), flac...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadIndex(t, server, []db.TrackRow{{
+		ID: 12, Path: path, Title: "Tagged", Artist: "Artist", Album: "Album",
+		Duration: 180, Embedding: index.Float32Bytes([]float32{1, 12}), Dim: 2,
+	}})
+
+	rec := serve(server, jsonReq(http.MethodGet, "/api/stream/12", ""))
+	if rec.Code != http.StatusOK || rec.Body.String() != string(flac) {
+		t.Fatalf("stream status=%d body=%q, want %q", rec.Code, rec.Body.String(), flac)
+	}
+	req := jsonReq(http.MethodGet, "/api/stream/12", "")
+	req.Header.Set("Range", "bytes=4-7")
+	rec = serve(server, req)
+	if rec.Code != http.StatusPartialContent || rec.Body.String() != "-str" {
+		t.Fatalf("range status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Range"); got != "bytes 4-7/16" {
+		t.Fatalf("Content-Range=%q", got)
+	}
+}
+
 func TestReloadRequiresAuthOrLoopback(t *testing.T) {
 	server := openTestServer(t)
 	server.Auth = auth.New(auth.Config{APIToken: "test-token"})

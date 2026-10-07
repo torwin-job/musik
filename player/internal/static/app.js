@@ -60,6 +60,7 @@ let plAddSort = "artist";
 let libTimer = null;
 let seeking = false;
 let playbackGen = 0;
+let unplayableRun = 0; // tracks in a row that failed to play
 let toastTimer = null;
 let jobPollTimer = null;
 let backgroundJobsTimer = null;
@@ -1903,6 +1904,32 @@ function wireAudio() {
     setPlayIcon(false);
   });
   audio.addEventListener("seeked", finishSeek);
+  // A file the browser cannot play (a broken or unusual rip) fires "error" and
+  // would leave the radio standing on it, silently in a background tab. Close
+  // it as an ended track with no verdict, so taste is untouched, and move on.
+  // Several failures in a row stop, so a dead server does not loop.
+  audio.addEventListener("error", () => {
+    const id = Number(audio.dataset.trackId || 0);
+    const gen = Number(audio.dataset.gen || 0);
+    if (!id || gen !== playbackGen || id !== current?.id || !sessionId) return;
+    if (audio.error?.code === MediaError.MEDIA_ERR_ABORTED) return;
+    unplayableRun += 1;
+    if (unplayableRun > 3) {
+      toast("Не получается воспроизвести треки подряд");
+      return;
+    }
+    toast(`Не удалось воспроизвести «${current.title || "трек"}», дальше`);
+    postEvent("track_end", {
+      reason: "unplayable",
+      track_id: id,
+      impression_id: current?.impression_id,
+      listened_sec: listenedAccum,
+      duration_sec: current?.duration || 0,
+    }).catch(console.error);
+  });
+  audio.addEventListener("playing", () => {
+    unplayableRun = 0;
+  });
   audio.addEventListener("ended", () => {
     const id = Number(audio.dataset.trackId || 0);
     const gen = Number(audio.dataset.gen || 0);
