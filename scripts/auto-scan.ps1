@@ -29,8 +29,10 @@ $root = Split-Path -Parent $PSScriptRoot
 $taskName = 'MusikAutoScan'
 
 if ($InstallTask) {
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Once" `
+    # conhost --headless gives PowerShell (and musik.exe it runs) a console with
+    # no window; started directly, the task flashes a console every hour.
+    $action = New-ScheduledTaskAction -Execute 'conhost.exe' `
+        -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`" -Once" `
         -WorkingDirectory $root
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) `
         -RepetitionInterval (New-TimeSpan -Minutes $IntervalMin)
