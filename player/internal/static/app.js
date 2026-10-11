@@ -1117,6 +1117,8 @@ function renderNow(track, { autoplay = true, startAt = 0, listened = 0, announce
     const gen = bumpPlayback();
     audio.dataset.trackId = String(track.id);
     audio.dataset.gen = String(gen);
+    // Only a track meant to play moves on by itself when it fails (see "error").
+    audio.dataset.autoplay = autoplay ? "1" : "";
     audio.src = url;
     const at = Math.max(0, Number(startAt) || 0);
     if (at > 0) {
@@ -3446,6 +3448,8 @@ function wireAudio() {
     const id = Number(audio.dataset.trackId || 0);
     const gen = Number(audio.dataset.gen || 0);
     if (!id || gen !== playbackGen || id !== current?.id || !sessionId) return;
+    // A track cued paused (resume, another device playing) is not skipped.
+    if (!audio.dataset.autoplay && audio.paused) return;
     if (audio.error?.code === MediaError.MEDIA_ERR_ABORTED) return;
     unplayableRun += 1;
     if (unplayableRun > 3) {
