@@ -53,9 +53,20 @@ Import-MusikDotEnv -Root $root
 $health = Get-MusikHealthUrl
 $baseUrl = $health -replace '/api/health$', ''
 $scanUrl = "$baseUrl/api/library/rescan"
+$scanBody = $null
 
 $headers = @{}
 if ($env:MUSIK_API_TOKEN) { $headers['Authorization'] = "Bearer $($env:MUSIK_API_TOKEN)" }
+
+# With accounts (MUSIK_MULTI_USER) there is no shared API token, and rescan is
+# an administrator action. The job goes straight to the worker on loopback,
+# which is what the player's rescan endpoint does; /api/reload stays open to
+# loopback in that mode.
+if ($env:MUSIK_MULTI_USER -match '^(1|true|yes|on)$') {
+    $scanUrl = Get-MusikWorkerUrl
+    $scanBody = '{"kind":"full_rescan"}'
+    $headers = @{}
+}
 
 function Write-ScanLog {
     param([string]$Message)
@@ -68,6 +79,7 @@ function Invoke-Rescan {
     $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     try {
         $resp = Invoke-WebRequest -Uri $scanUrl -Method POST -Headers $headers `
+            -Body $scanBody -ContentType 'application/json' `
             -UseBasicParsing -TimeoutSec $TimeoutSec
         Write-ScanLog "[$stamp] rescan OK $($resp.StatusCode): $($resp.Content)"
         return $true
@@ -94,6 +106,8 @@ function Invoke-LibraryArt {
     }
     $env:PYTHONIOENCODING = 'utf-8'
     $env:PYTHONUTF8 = '1'
+    # musik prints UTF-8; read it as such, or the log gets box-drawing mojibake.
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     $ErrorActionPreference = 'Continue'
     foreach ($cmd in @('artwork', 'artist-photos')) {
         $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
