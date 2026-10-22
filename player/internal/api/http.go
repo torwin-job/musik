@@ -130,8 +130,11 @@ func (s *Server) uiPage(r *http.Request) string {
 	if c, err := r.Cookie("musik_ui"); err == nil {
 		choice = c.Value
 	}
-	if choice == "mozgolika" {
+	switch choice {
+	case "mozgolika":
 		return "mozgolika.html"
+	case "rainedev":
+		return "rainedev.html"
 	}
 	return "index.html"
 }
@@ -150,11 +153,11 @@ func staticCacheControl(path string) string {
 		return "public, max-age=604800"
 	}
 	switch path {
-	case "/", "", "/index.html", "/mozgolika.html":
+	case "/", "", "/index.html", "/mozgolika.html", "/rainedev.html":
 		// Revalidate the page itself: with max-age=3600 a browser keeps an old
 		// index.html (and the app.js it pairs with) for up to an hour after a deploy.
 		return "no-cache"
-	case "/app.js", "/style.css", "/fonts.css", "/redesign.css":
+	case "/app.js", "/style.css", "/fonts.css", "/redesign.css", "/rainedev.css", "/rainedev.js":
 		// Revalidate with the page. max-age kept a stale UI for an hour after a refresh.
 		return "no-cache"
 	default:
@@ -243,7 +246,7 @@ func (s *Server) staticVersion() string {
 		return ""
 	}
 	h := sha256.New()
-	for _, name := range []string{"index.html", "mozgolika.html", "app.js", "style.css", "redesign.css"} {
+	for _, name := range []string{"index.html", "mozgolika.html", "rainedev.html", "app.js", "style.css", "redesign.css", "rainedev.css", "rainedev.js"} {
 		f, err := s.Static.Open(name)
 		if err != nil {
 			continue

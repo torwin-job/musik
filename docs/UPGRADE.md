@@ -70,7 +70,7 @@ MUSIK_IMAGE_TAG=latest
 `MUSIK_LIBRARY` остаются как были. Можно добавить:
 
 ```dotenv
-# Веб-интерфейс по умолчанию: original (прежний) или mozgolika (новый).
+# Веб-интерфейс по умолчанию: original, mozgolika или rainedev.
 # Каждый браузер может переключить его в «Профиль → Интерфейс».
 MUSIK_UI=original
 ```

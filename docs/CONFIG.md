@@ -108,7 +108,7 @@ Redirect URI клиента: `<MUSIK_PUBLIC_BASE_URL>/api/auth/oidc/default/call
 
 | Переменная | Значение |
 | --- | --- |
-| `MUSIK_UI` | Интерфейс по умолчанию: `original` или `mozgolika`. Браузер переключает его в «Профиль → Интерфейс». |
+| `MUSIK_UI` | Интерфейс по умолчанию: `original`, `mozgolika` или `rainedev`. Браузер переключает его в «Профиль → Интерфейс». |
 | `MUSIK_PUBLIC_BASE_URL` | Также нужен в однопользовательском режиме для ссылок «поделиться радио» и QR. |
 | `MUSIK_MOBILE_FORMAT`, `MUSIK_MOBILE_BITRATE` | Перекодирование для телефона: `aac`/`mp3`, по умолчанию `aac`, `160k`. |
 | `MUSIK_SHARE_BITRATE`, `MUSIK_SHARE_MAX_LISTENERS` | Поток «поделиться радио»: `192k`, 4 слушателя. |

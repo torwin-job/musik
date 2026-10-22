@@ -402,7 +402,9 @@ function escapeHtml(s) {
 
 function toast(msg) {
   const el = $("toast");
-  el.textContent = msg;
+  const raine = document.documentElement.dataset.ui === "rainedev";
+  el.textContent = raine && typeof window.rainedevToastMessage === "function"
+    ? window.rainedevToastMessage(msg) : msg;
   el.hidden = false;
   requestAnimationFrame(() => el.classList.add("show"));
   clearTimeout(toastTimer);
@@ -411,7 +413,7 @@ function toast(msg) {
     setTimeout(() => {
       el.hidden = true;
     }, 220);
-  }, 2200);
+  }, raine ? Math.min(7000, Math.max(3200, el.textContent.length * 55)) : 2200);
 }
 
 function fmtTime(sec) {
@@ -5214,11 +5216,23 @@ function saveCustomTheme(event) {
 }
 
 // The server picks the page by the musik_ui cookie (MUSIK_UI sets the
-// default); both pages share this script.
+// default); all editions share this script.
 function wireUiChoice() {
   const select = $("ui-choice");
   if (!select) return;
-  select.value = document.querySelector('link[href^="/redesign.css"]') ? "mozgolika" : "original";
+  select.value = document.documentElement.dataset.ui === "rainedev" ? "rainedev"
+    : document.querySelector('link[href^="/redesign.css"]') ? "mozgolika" : "original";
+  if (document.documentElement.dataset.ui === "rainedev") {
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey
+          || event.target?.closest("input, textarea, select, [contenteditable]")) return;
+      event.preventDefault();
+      libTab = "tracks";
+      libArtist = null;
+      setView("library", "collection");
+      $("lib-filter")?.focus();
+    });
+  }
   select.onchange = () => {
     document.cookie = `musik_ui=${select.value}; path=/; max-age=31536000; SameSite=Lax`;
     location.reload();

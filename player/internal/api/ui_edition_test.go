@@ -12,10 +12,12 @@ func TestStaticEditionCookieSelectsPage(t *testing.T) {
 	server := &Server{Static: http.FS(fstest.MapFS{
 		"index.html":     &fstest.MapFile{Data: []byte("original interface")},
 		"mozgolika.html": &fstest.MapFile{Data: []byte("mozgolika interface")},
+		"rainedev.html":  &fstest.MapFile{Data: []byte("rainedev interface")},
 	})}
 	for _, tc := range []struct{ cookie, want string }{
 		{"", "original interface"},
 		{"mozgolika", "mozgolika interface"},
+		{"rainedev", "rainedev interface"},
 		{"original", "original interface"},
 		{"../../etc/passwd", "original interface"},
 	} {
@@ -49,5 +51,24 @@ func TestStaticEditionEnvironmentDefault(t *testing.T) {
 	server.staticHandler().ServeHTTP(response, httptest.NewRequest("GET", "/", nil))
 	if response.Body.String() != "mozgolika" {
 		t.Fatalf("default body=%q", response.Body.String())
+	}
+}
+
+func TestRaineDevEnvironmentDefaultAndCookieOverride(t *testing.T) {
+	server := &Server{Static: http.FS(fstest.MapFS{
+		"index.html":    &fstest.MapFile{Data: []byte("original")},
+		"rainedev.html": &fstest.MapFile{Data: []byte("RaineDev")},
+	})}
+	server.Cfg.UI = "rainedev"
+	for _, tc := range []struct{ cookie, want string }{{"", "RaineDev"}, {"original", "original"}} {
+		req := httptest.NewRequest("GET", "/", nil)
+		if tc.cookie != "" {
+			req.AddCookie(&http.Cookie{Name: "musik_ui", Value: tc.cookie})
+		}
+		w := httptest.NewRecorder()
+		server.staticHandler().ServeHTTP(w, req)
+		if w.Code != 200 || w.Body.String() != tc.want {
+			t.Fatalf("cookie=%q code=%d body=%q", tc.cookie, w.Code, w.Body.String())
+		}
 	}
 }
