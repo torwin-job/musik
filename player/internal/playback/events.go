@@ -178,15 +178,19 @@ func (e *Engine) ApplyEvent(sess *Session, ev Event) EventResult {
 			}
 		}
 		signed, action := taste.WeightFromListen(listened, dur, reason)
+		var finishedVec []float32
 		if row, ok := e.Idx.RowOf(ev.TrackID); ok {
 			vector := e.Idx.Vector(row)
 			if outcome == "finished" {
 				if signed <= 0 {
 					signed = 1
 				}
+				// Update in-memory taste before Advance so a refill ranks with
+				// the new profile; persist to DB after Advance so stream warm
+				// for the next track starts before the slower profile writes.
 				e.TasteState.UpdatePositive(vector, signed, e.Cfg.TasteAlpha,
 					db.DayPart(time.Now().Hour()), &sess.TasteState)
-				e.PersistTaste(vector, signed, e.Cfg.TasteAlpha)
+				finishedVec = vector
 			} else if outcome == "early_skip" {
 				e.TasteState.AddEarlySkip(&sess.TasteState, vector, 1-ratio)
 				signed = 0
@@ -203,9 +207,6 @@ func (e *Engine) ApplyEvent(sess *Session, ev Event) EventResult {
 		if outcome == "finished" {
 			_ = e.Store.BumpRecStats(ev.TrackID, 0, 0, 1)
 			e.Idx.BumpCompletedLocal(ev.TrackID)
-			if row, ok := e.Idx.RowOf(ev.TrackID); ok {
-				e.learnActiveContexts(sess, e.Idx.Vector(row), 1)
-			}
 		}
 		if sess.Prev != 0 && sess.Prev != ev.TrackID && sess.Mode != "share" {
 			provenance := "radio"
@@ -217,6 +218,10 @@ func (e *Engine) ApplyEvent(sess *Session, ev Event) EventResult {
 		e.ObserveExploreOutcome(source, outcome, true)
 		e.ExcludeTrack(sess, ev.TrackID)
 		nextID := e.Advance(sess)
+		if len(finishedVec) > 0 {
+			e.PersistTaste(finishedVec, signed, e.Cfg.TasteAlpha)
+			e.learnActiveContexts(sess, finishedVec, 1)
+		}
 		return EventResult{
 			OK: true, IsEnd: true, SignedWeight: signed,
 			NextID: nextID, Ended: nextID == 0,

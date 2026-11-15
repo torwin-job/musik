@@ -752,6 +752,33 @@ def _local_passwords(conn: sqlite3.Connection) -> None:
     _add_column(conn, "external_identities", "password_hash TEXT")
 
 
+def _plugin_jobs(conn: sqlite3.Connection) -> None:
+    # Plugin imports are not worker jobs. The Python runner claims every
+    # pending row in jobs, so a plugin task in that table would be picked up
+    # as an unknown kind. input_json holds the import URL for the player;
+    # public responses omit it.
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS plugin_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plugin_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            input_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'running', 'done', 'error', 'cancelled')),
+            progress_json TEXT,
+            result_json TEXT,
+            error TEXT,
+            error_code TEXT,
+            downstream_job_id INTEGER REFERENCES jobs(id),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_plugin_jobs_status ON plugin_jobs(status, id);
+        """
+    )
+
+
 MIGRATIONS = (
     Migration(1, "baseline", _baseline),
     Migration(2, "future_data_foundation", _future_data_foundation),
@@ -767,6 +794,7 @@ MIGRATIONS = (
     Migration(12, "profile_ownership", _profile_ownership),
     Migration(13, "device_tokens_and_admin_guard", _device_tokens),
     Migration(14, "local_passwords", _local_passwords),
+    Migration(15, "plugin_jobs", _plugin_jobs),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version
 

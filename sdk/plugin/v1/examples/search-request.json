@@ -1,0 +1,10 @@
+{
+  "type": "request",
+  "protocol": "1",
+  "id": "job-1",
+  "action": "library.search",
+  "input": {
+    "query": "example track",
+    "limit": 8
+  }
+}

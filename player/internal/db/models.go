@@ -74,3 +74,20 @@ type JobRecord struct {
 }
 
 const jobColumns = `id, kind, status, payload_json, result_json, error, created_at, updated_at`
+
+type PluginJobRecord struct {
+	ID              int64   `db:"id"`
+	PluginID        string  `db:"plugin_id"`
+	Action          string  `db:"action"`
+	InputJSON       string  `db:"input_json"`
+	Status          string  `db:"status"`
+	ProgressJSON    *string `db:"progress_json"`
+	ResultJSON      *string `db:"result_json"`
+	Error           *string `db:"error"`
+	ErrorCode       *string `db:"error_code"`
+	DownstreamJobID *int64  `db:"downstream_job_id"`
+	CreatedAt       string  `db:"created_at"`
+	UpdatedAt       string  `db:"updated_at"`
+}
+
+const pluginJobColumns = `id, plugin_id, action, input_json, status, progress_json, result_json, error, error_code, downstream_job_id, created_at, updated_at`

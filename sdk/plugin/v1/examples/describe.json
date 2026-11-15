@@ -1,0 +1,9 @@
+{
+  "type": "describe",
+  "protocol": "1",
+  "id": "example",
+  "capabilities": ["library.import_url"],
+  "name": "Example",
+  "version": "0.1.0",
+  "description": "Imports one remote audio file into the library."
+}

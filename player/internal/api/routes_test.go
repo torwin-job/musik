@@ -56,6 +56,12 @@ func TestRouteScopesAreExplicit(t *testing.T) {
 		"POST /api/jobs/{kind}":                        scopeAdmin,
 		"GET /api/jobs/{id}":                           scopeAdmin,
 		"GET /api/jobs":                                scopeAdmin,
+		"GET /api/plugins":                             scopeAdmin,
+		"POST /api/plugins/{id}/import":                scopeAdmin,
+		"POST /api/plugins/{id}/search":                scopeAdmin,
+		"GET /api/plugin-jobs":                         scopeAdmin,
+		"GET /api/plugin-jobs/{id}":                    scopeAdmin,
+		"POST /api/plugin-jobs/{id}/cancel":            scopeAdmin,
 	}
 	seen := map[string]struct{}{}
 	for _, route := range apiRoutes {

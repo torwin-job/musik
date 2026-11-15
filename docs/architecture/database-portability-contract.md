@@ -1,6 +1,6 @@
 # SQLite and PostgreSQL portability contract
 
-Status: integrated schema v14 is verified on SQLite and PostgreSQL 17, including
+Status: integrated schema v15 is verified on SQLite and PostgreSQL 17, including
 profile ownership, device tokens and the offline SQLite-to-PostgreSQL transfer. Go
 repositories run explicit SQL through sqlx; Python repositories use SQLAlchemy
 expressions or text SQL with named parameters. Queries are written once in the
@@ -16,7 +16,7 @@ The same musik build and logical schema must run on SQLite or PostgreSQL. Select
 - Python runtime repositories use SQLAlchemy sessions. Catalog and job operations use mapped entities and SQLAlchemy expressions; other queries are `text()` SQL with named parameters (`:profile`, `:track_id`) through `ORMConnection`, sent unchanged.
 - Time windows are computed in application code and compared as UTC ISO-8601 text (whole-second cutoffs order correctly against `Z` and `+00:00` suffixes). Upserts qualify the target table on the right-hand side of `DO UPDATE SET` (`t.col + excluded.col`); PostgreSQL rejects the unqualified form as ambiguous.
 - Python runtime connections are SQLAlchemy sessions. The remaining direct `sqlite3` usage is limited to legacy migrations, SQLite snapshot/transfer checks, and SQLite-specific test setup.
-- Alembic owns migration history through `musik_14`. Go requires that shared head and additionally checks `PRAGMA user_version` on SQLite; it does not migrate at startup.
+- Alembic owns migration history through `musik_15`. Go requires that shared head and additionally checks `PRAGMA user_version` on SQLite; it does not migrate at startup.
 - Tests: the Go fixture `player/internal/testdb/schema.sql` is generated from the migrations (`scripts/go_test_schema.py`; a Python test rejects drift). `MUSIK_TEST_BACKEND=postgres` runs the whole Go and Python suites against per-test clones of a migrated PostgreSQL template; CI runs both backends. A repository smoke test reaches every Go repository method.
 - Known gap: `profile_id` columns still carry the owner profile as a column DEFAULT inherited from the SQLite adoption migration. Repositories always bind the profile, but the default should be dropped in a later migration so a forgotten value fails instead of landing in the owner's profile.
 
@@ -52,9 +52,9 @@ The same musik build and logical schema must run on SQLite or PostgreSQL. Select
 ## Migration and configuration contract
 
 - One migration command is the only schema writer. Applications and workers validate schema compatibility and fail clearly; they do not race to migrate at startup.
-- Alembic over SQLAlchemy is the sole migration runner. Operator runs `musik db migrate` once before player/worker startup. It adopts existing SQLite v5 data and advances it through identity/profile migrations to v14; Go validates the same head and never migrates at startup. Downgrade is not supported for data migrations; restore a verified backup to roll back.
-- SQLite batch DDL and PostgreSQL constraints may use different operations as long as they preserve the same logical invariant. Fresh PostgreSQL databases are created from the reflected shared schema and advanced to the same `musik_14` head.
-- The offline `musik db transfer` path copies the complete SQLite v14 schema and rows, including profile-bound device-token hashes, to a destination with only the expected bootstrap owner/profile. It validates the read-only source snapshot, schema and foreign keys, then compares per-table counts and deterministic checksums. It leaves the SQLite source and external music/artwork files untouched; referenced paths must already exist at the destination.
+- Alembic over SQLAlchemy is the sole migration runner. Operator runs `musik db migrate` once before player/worker startup. It adopts existing SQLite v5 data and advances it through identity/profile migrations to v15; Go validates the same head and never migrates at startup. Downgrade is not supported for data migrations; restore a verified backup to roll back.
+- SQLite batch DDL and PostgreSQL constraints may use different operations as long as they preserve the same logical invariant. Fresh PostgreSQL databases are created from the reflected shared schema and advanced to the same `musik_15` head.
+- The offline `musik db transfer` path copies the complete SQLite v15 schema and rows, including profile-bound device-token hashes, to a destination with only the expected bootstrap owner/profile. It validates the read-only source snapshot, schema and foreign keys, then compares per-table counts and deterministic checksums. It leaves the SQLite source and external music/artwork files untouched; referenced paths must already exist at the destination.
 - Existing personal rows are mapped once to the installation owner/default profile before transfer. New invite-created OIDC accounts receive separate users and profiles; the transfer does not copy personal data to them.
 - Configuration contract: `MUSIK_DATABASE_URL` selects the backend (`sqlite:///...` or a PostgreSQL URL). Keep `MUSIK_DB_PATH` as a deprecated SQLite-only alias during transition; setting both is an error. Redact credentials from logs and diagnostics.
 - SQLite and PostgreSQL use the same schema version, migration identity, account/profile model and logical defaults. PostgreSQL is not a separate product mode.
@@ -82,6 +82,6 @@ Run the same repository and service contract cases against SQLite and PostgreSQL
 ## Resolved architecture choices
 
 - Resolved: Go uses sqlx with explicit SQL (GORM was removed: most queries are analytical and ran through raw SQL anyway), SQLAlchemy is the Python data layer, Alembic owns migrations, and `musik db migrate` is the operator command. No runtime SQL rewriting.
-- Implemented for schema v14: offline SQLite-to-PostgreSQL transfer verifies row counts and SHA-256 checksums and maps the legacy owner/profile. Device-token hashes and profile binding transfer with the database; raw secrets are never stored. Music and artwork files remain external; database rows and embedded binary payloads are transferred.
+- Implemented for schema v15: offline SQLite-to-PostgreSQL transfer verifies row counts and SHA-256 checksums and maps the legacy owner/profile. Device-token hashes and profile binding transfer with the database; raw secrets are never stored. Music and artwork files remain external; database rows and embedded binary payloads are transferred.
 - PostgreSQL 17 is the CI and release minimum. SQLite requires a version supporting the migration's `RETURNING` behavior.
 - SQLite in-memory test compatibility and PostgreSQL CI service image/version are implementation choices; the behavioral cases above are mandatory regardless of tool.

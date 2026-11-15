@@ -6,7 +6,7 @@ CREATE TABLE alembic_version (
 	version_num VARCHAR(32) NOT NULL,
 	CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
 );
-INSERT INTO "alembic_version" VALUES('musik_14');
+INSERT INTO "alembic_version" VALUES('musik_15');
 CREATE TABLE artist_photos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name_key TEXT NOT NULL UNIQUE,
@@ -282,6 +282,21 @@ rule_json TEXT,
 allow_duplicates INTEGER NOT NULL DEFAULT 0,
 owner_scope TEXT NOT NULL DEFAULT 'local',
 UNIQUE(profile_id,id));
+CREATE TABLE plugin_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plugin_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            input_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'running', 'done', 'error', 'cancelled')),
+            progress_json TEXT,
+            result_json TEXT,
+            error TEXT,
+            error_code TEXT,
+            downstream_job_id INTEGER REFERENCES jobs(id),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
 CREATE TABLE profiles (
     id            TEXT PRIMARY KEY,
     owner_user_id TEXT NOT NULL REFERENCES users(id),
@@ -743,6 +758,7 @@ CREATE INDEX "idx_transitions_profile" ON "transitions"(profile_id);
 CREATE INDEX "idx_user_profile_snapshots_profile" ON "user_profile_snapshots"(profile_id);
 CREATE INDEX idx_device_tokens_user
             ON device_tokens(user_id, revoked_at, expires_at);
+CREATE INDEX idx_plugin_jobs_status ON plugin_jobs(status, id);
 DELETE FROM "sqlite_sequence";
 INSERT INTO "sqlite_sequence" VALUES('discover_tips',0);
 INSERT INTO "sqlite_sequence" VALUES('listening_history',0);
@@ -751,4 +767,4 @@ INSERT INTO "sqlite_sequence" VALUES('recommendation_impressions',0);
 INSERT INTO "sqlite_sequence" VALUES('user_profile_snapshots',0);
 COMMIT;
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 14;
+PRAGMA user_version = 15;

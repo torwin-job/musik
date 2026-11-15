@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/torwin-job/musik/blob/main/sdk/plugin/v1/schema/manifest.schema.json",
+  "title": "musik plugin manifest",
+  "$comment": "Protocol v1. Unknown properties are kept. protocol is the exact string 1.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["id", "executable", "protocol", "capabilities"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$",
+      "description": "Stable plugin id. The describe command reports the same id."
+    },
+    "executable": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[^\\x00-\\x1f]+$",
+      "description": "Executable path. Relative paths are resolved from the manifest file's directory. The host executes this path directly, with no shell."
+    },
+    "protocol": {
+      "const": "1",
+      "description": "Exact protocol version string."
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*(?:\\.[a-z][a-z0-9_-]*)+$"
+      },
+      "description": "Protocol v1 runs library.import_url. library.search is optional and is invoked only when both sides list it. Other well-formed names are preserved and are not invoked."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    }
+  }
+}

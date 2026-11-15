@@ -3507,3 +3507,59 @@ button, input, select, textarea { font-family: inherit; }
   #view-profile .profile-row-actions { justify-content: flex-start; }
   #view-profile .theme-colors { grid-template-columns: 1fr 1fr; }
 }
+.plugin-results { list-style: none; margin: 1rem 0 0; padding: 0; }
+.plugin-result {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  padding: .7rem 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.plugin-result-text { display: flex; flex-direction: column; gap: .15rem; min-width: 0; flex: 1; }
+.plugin-result-text strong,
+.plugin-result-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin-status { margin: .6rem 0; }
+.plugin-import { margin: .2rem 0 1rem; }
+.plugin-import-head {
+  display: flex;
+  justify-content: space-between;
+  gap: .8rem;
+  color: var(--muted);
+  font-size: .78rem;
+}
+.plugin-import-bar,
+.plugin-track-bar {
+  height: 8px;
+  margin: .45rem 0 .15rem;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--line);
+}
+.plugin-track-bar { height: 4px; margin: .15rem 0 0; }
+.plugin-import-bar > span,
+.plugin-track-bar > span {
+  display: block;
+  width: var(--plugin-pct, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-bright), var(--accent2));
+  transition: width .25s ease;
+}
+.plugin-import-tracks { list-style: none; margin: .7rem 0 0; padding: 0; }
+.plugin-import-track {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .2rem .8rem;
+  align-items: center;
+  padding: .55rem 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.plugin-import-track strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plugin-import-state { color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.plugin-import-track[data-status="running"] .plugin-import-state { color: var(--accent2); }
+.plugin-import-track[data-status="error"] .plugin-import-state { color: var(--danger); }
+.plugin-track-bar { grid-column: 1 / -1; }

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/torwin-job/musik/blob/main/sdk/plugin/v1/schema/describe.schema.json",
+  "title": "musik plugin describe result",
+  "$comment": "One JSON object written to stdout by `<executable> describe`.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["type", "protocol", "id", "capabilities"],
+  "properties": {
+    "type": { "const": "describe" },
+    "protocol": { "const": "1" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "description": "Protocol v1 runs library.import_url. library.search is optional. Other well-formed names are preserved and are not invoked.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*(?:\\.[a-z][a-z0-9_-]*)+$"
+      }
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    }
+  }
+}

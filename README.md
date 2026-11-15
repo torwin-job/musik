@@ -84,6 +84,7 @@ Bearer `MUSIK_API_TOKEN`. В режиме аккаунтов общий паро
 | [docs/DEPLOY.md](docs/DEPLOY.md) | установка: SQLite / PostgreSQL / HTTPS / share |
 | [docs/UPGRADE.md](docs/UPGRADE.md) | пошаговое обновление существующей установки |
 | [docs/CONFIG.md](docs/CONFIG.md) | все переменные `.env` |
+| [sdk/plugin/v1/README.md](sdk/plugin/v1/README.md) | протокол локальных плагинов: `library.import_url` и необязательный `library.search` |
 | [docs/MOBILE.md](docs/MOBILE.md) | телефон / Flutter |
 | [docs/CAPACITY.md](docs/CAPACITY.md) | ресурсы под ~50k треков |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | история рекомендательного ядра, не продуктовый план |
@@ -110,6 +111,7 @@ musik/
 ├── tools/                    ← разовые инструменты библиотеки (CUE, дубли, артисты)
 ├── src/musik/                ← Python: scan / embed / jobs / worker
 ├── player/                   ← Go: API + UI
+├── sdk/plugin/v1/            ← контракт плагинов и Python helper
 ├── mobile/README.md          ← контракт отдельного Flutter-клиента
 ├── tests/                    ← pytest + go tests рядом
 └── data/                     ← runtime (БД, кеши; в git почти пусто)
@@ -139,7 +141,7 @@ musik/
 | `data/music/` | опциональная локальная библиотека по умолчанию |
 | `data/worker.log` и др. | служебные логи/эксперименты (можно игнорировать) |
 
-Музыкальная коллекция обычно **не** внутри репо: путь задаётся `MUSIK_LIBRARY` (и монтируется RO в Docker).
+Музыкальная коллекция обычно **не** внутри репо: путь задаётся `MUSIK_LIBRARY`. В Docker player монтирует её на запись, worker — только для чтения.
 
 **Бэкап / перенос / обновление:** сохраняй согласованный backup БД и отдельно аудио, кеши и конфигурацию. Порядок обновления и отката — в [инструкции обновления](docs/UPGRADE.md). Неизменённые аудиофайлы сохраняют MD5 и позволяют использовать прежний кеш эмбеддингов.
 
@@ -171,7 +173,7 @@ musik/
 
 Точка входа — `cmd/musik-player`. Три пакета, на которые опирается остальной плеер:
 
-- **`internal/api`** — HTTP: маршруты, JSON, cookie. Одна таблица маршрутов со scope `public`, `user`, `profile`, `admin`. Рядом, не внутри api: `app` (reload и воркер), `media` (обложки, транскод), `library` (загрузка и группировка), `playback`, `recommend`, `index` (общие эмбеддинги и счётчики профиля), `queue`, `taste`, `playlist`, `rules`, `db`, `auth` (пароль, Bearer, cookie, OIDC), `settings`, `themes`.
+- **`internal/api`** — HTTP: маршруты, JSON, cookie. Одна таблица маршрутов со scope `public`, `user`, `profile`, `admin`. Рядом, не внутри api: `app` (reload, воркер и задачи плагинов), `plugins` (discovery и JSONL-процесс), `media` (обложки, транскод), `library` (загрузка и группировка), `playback`, `recommend`, `index` (общие эмбеддинги и счётчики профиля), `queue`, `taste`, `playlist`, `rules`, `db`, `auth` (пароль, Bearer, cookie, OIDC), `settings`, `themes`.
 - **`internal/playback`** — сессии, радио и фиксированные очереди, события, полка. Радио от трека, артиста или альбома держит якорь в смеси вкуса, пока режим не сменён; «ближе» и «шире» — два шага на той же сессии. Единственный реестр полки — `mixes.json`.
 - **`internal/db`** — SQLite и PostgreSQL. Один `Store` — это профиль на общем пуле. Миграций в Go нет: плеер только сверяет head схемы.
 
@@ -251,6 +253,13 @@ make smoke
 ```
 
 Подробности: [docs/DEPLOY.md](docs/DEPLOY.md).
+
+Плагины не входят в образы. Каталог с manifest и executable монтируется в player
+на запись (`/plugins`); библиотека у player тоже на запись (`/music`), чтобы
+плагин мог положить файл, у worker — только чтение. После успешного импорта
+player ставит обычный `full_rescan`. Страница добавляет вкладку на каждый
+активный плагин по его manifest. Как смонтировать каталог —
+[docs/DEPLOY.md](docs/DEPLOY.md#плагины).
 
 ### Локально без Docker (CPU / NVIDIA CUDA venv)
 

@@ -112,4 +112,59 @@ func TestEmbeddedOpenAPIMatchesRegisteredRoutes(t *testing.T) {
 	if ref != "#/components/schemas/PlaybackEvent" {
 		t.Fatalf("/api/events schema ref = %q", ref)
 	}
+
+	for _, name := range []string{"Plugin", "PluginCatalog", "PluginImportRequest", "PluginJob", "PluginImportAccepted", "PluginJobList"} {
+		if document.Components.Schemas[name] == nil {
+			t.Errorf("missing %s schema", name)
+		}
+	}
+	var pluginJob struct {
+		Required   []string                   `json:"required"`
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(document.Components.Schemas["PluginJob"], &pluginJob); err != nil {
+		t.Fatalf("parse PluginJob schema: %v", err)
+	}
+	for _, name := range []string{"id", "plugin_id", "action", "status", "error", "error_code", "progress", "result", "downstream_job_id", "created_at", "updated_at"} {
+		found := false
+		for _, required := range pluginJob.Required {
+			if required == name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("PluginJob does not require %s", name)
+		}
+	}
+	for _, hidden := range []string{"url", "input", "input_json", "executable"} {
+		if pluginJob.Properties[hidden] != nil {
+			t.Errorf("PluginJob exposes %s", hidden)
+		}
+	}
+	var importOperation struct {
+		RequestBody struct {
+			Content map[string]struct {
+				Schema map[string]string `json:"schema"`
+			} `json:"content"`
+		} `json:"requestBody"`
+	}
+	if err := json.Unmarshal(document.Paths["/api/plugins/{id}/import"]["post"], &importOperation); err != nil {
+		t.Fatalf("parse plugin import operation: %v", err)
+	}
+	if got := importOperation.RequestBody.Content["application/json"].Schema["$ref"]; got != "#/components/schemas/PluginImportRequest" {
+		t.Fatalf("plugin import schema ref = %q", got)
+	}
+	var catalogOperation struct {
+		Responses map[string]struct {
+			Content map[string]struct {
+				Schema map[string]string `json:"schema"`
+			} `json:"content"`
+		} `json:"responses"`
+	}
+	if err := json.Unmarshal(document.Paths["/api/plugins"]["get"], &catalogOperation); err != nil {
+		t.Fatalf("parse plugin catalog operation: %v", err)
+	}
+	if got := catalogOperation.Responses["200"].Content["application/json"].Schema["$ref"]; got != "#/components/schemas/PluginCatalog" {
+		t.Fatalf("plugin catalog schema ref = %q", got)
+	}
 }

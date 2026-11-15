@@ -12,12 +12,17 @@ services:
       MUSIK_DATA_DIR: /data
       MUSIK_THEMES: /data/themes
       MUSIK_LIBRARY: /music
+      # .env MUSIK_PLUGIN_DIRS is one host directory. The process scans /plugins.
+      MUSIK_PLUGIN_DIRS: /plugins
       MUSIK_WORKER_URL: http://worker:8790
       MUSIK_WORKER_AUTOSTART: "0"
       MUSIK_PLAYER_ADDR: ":8787"
     volumes:
       - musik-data:/data
+      # Read-write: plugins publish imported audio here. The worker mounts it read-only.
       - ${MUSIK_LIBRARY:-./data/music}:/music
+      # Read-write: external manifest, executable, and the plugin's own files.
+      - ${MUSIK_PLUGIN_DIRS:-./data/plugins}:/plugins
     healthcheck:
       test: [CMD, curl, --fail, --silent, http://127.0.0.1:8787/api/health]
       interval: 5s
@@ -45,6 +50,7 @@ services:
       MUSIK_NIGHTLY_MIXES_TIMEZONE: ${MUSIK_NIGHTLY_MIXES_TIMEZONE:-UTC}
     volumes:
       - musik-data:/data
+      # Read-only: scan and embed. Imports are written by the player mount above.
       - ${MUSIK_LIBRARY:-./data/music}:/music:ro
     depends_on:
       migrate:

@@ -1,0 +1,9 @@
+{
+  "id": "example",
+  "executable": "bin/example-plugin",
+  "protocol": "1",
+  "capabilities": ["library.import_url"],
+  "name": "Example",
+  "version": "0.1.0",
+  "description": "Imports one remote audio file into the library."
+}

@@ -1,0 +1,8 @@
+{
+  "type": "result",
+  "protocol": "1",
+  "id": "job-1",
+  "result": {
+    "paths": ["imports/example/track.flac"]
+  }
+}

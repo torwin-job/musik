@@ -1,0 +1,9 @@
+{
+  "type": "error",
+  "protocol": "1",
+  "id": "job-1",
+  "error": {
+    "code": "unsupported_url",
+    "message": "URL is not supported"
+  }
+}

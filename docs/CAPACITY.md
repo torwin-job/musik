@@ -28,7 +28,7 @@
 - **6–8 vCPU**, **16 GB RAM**
 - **GPU** с ≥8 GB VRAM (RTX 3060/4060 / cloud T4) для CLAP
 - SSD 200+ GB если FLAC-библиотека большая
-- Отдельный диск/volume под `MUSIK_LIBRARY` (RO mount в Compose)
+- Отдельный диск/volume под `MUSIK_LIBRARY`: у player монтирование на запись, у worker только чтение
 
 ### Запас под share + несколько устройств
 

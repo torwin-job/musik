@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -11,28 +12,36 @@ import (
 	"github.com/torwin-job/musik/player/internal/playback"
 )
 
+// workerJob is one queue insert, either from the worker or the local fallback.
+type workerJob struct {
+	ID    int64
+	Code  int
+	Local bool
+	Body  map[string]any
+}
+
+func fullRescanPayload() map[string]any {
+	return map[string]any{"mixes": playback.GeneratedMixContract()}
+}
+
 func (s *Server) handleLibraryRescan(w http.ResponseWriter, _ *http.Request) {
-	s.ensureWorkerBeforeEnqueue()
-	rescanPayload := map[string]any{"mixes": playback.GeneratedMixContract()}
-	rescanBody, _ := json.Marshal(rescanPayload)
-	out, code, err := s.proxyWorker("POST", "/jobs", map[string]any{"kind": "full_rescan", "payload": rescanPayload})
+	queued, err := s.enqueueWorkerJob("full_rescan", fullRescanPayload())
 	if err != nil {
-		id, e2 := s.Store.EnqueueJob("full_rescan", string(rescanBody))
-		if e2 != nil {
-			writeErr(w, 503, "enqueue_failed", "worker unreachable and local enqueue failed: "+err.Error())
-			return
-		}
+		writeErr(w, 503, "enqueue_failed", "worker unreachable and local enqueue failed: "+err.Error())
+		return
+	}
+	if queued.Local {
 		writeJSON(w, map[string]any{
-			"ok": true, "id": id, "job_id": id, "status": "pending",
+			"ok": true, "id": queued.ID, "job_id": queued.ID, "status": "pending",
 			"hint": "start `musik worker` to process jobs",
 		})
 		return
 	}
-	if code >= 400 {
-		writeErr(w, code, "worker_error", "worker error")
+	if queued.Code >= 400 {
+		writeErr(w, queued.Code, "worker_error", "worker error")
 		return
 	}
-	writeJSON(w, out)
+	writeJSON(w, queued.Body)
 }
 
 func (s *Server) handleEnqueueJob(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +54,6 @@ func (s *Server) handleEnqueueJob(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "device_token_scope", "device tokens can only refresh personal mixes")
 		return
 	}
-	s.ensureWorkerBeforeEnqueue()
 	// Admin routes run on the installation server. The mix still belongs to
 	// the caller's profile; single-user has no principal and uses the install id.
 	profileID := s.Store.ProfileID
@@ -56,24 +64,81 @@ func (s *Server) handleEnqueueJob(w http.ResponseWriter, r *http.Request) {
 	if kind == "mix_pack" || kind == "full_rescan" {
 		payload["mixes"] = playback.GeneratedMixContract()
 	}
-	body, _ := json.Marshal(payload)
-	out, code, err := s.proxyWorker("POST", "/jobs", map[string]any{"kind": kind, "payload": payload})
+	queued, err := s.enqueueWorkerJob(kind, payload)
 	if err != nil {
-		id, e2 := s.Store.EnqueueJob(kind, string(body))
-		if e2 != nil {
-			writeErr(w, 503, "enqueue_failed", err.Error())
-			return
-		}
+		writeErr(w, 503, "enqueue_failed", err.Error())
+		return
+	}
+	if queued.Local {
 		writeJSON(w, map[string]any{
-			"ok": true, "id": id, "job_id": id, "status": "pending", "via": "local_db",
+			"ok": true, "id": queued.ID, "job_id": queued.ID, "status": "pending", "via": "local_db",
 		})
 		return
 	}
-	if code >= 400 {
-		writeErr(w, code, "worker_error", "worker error")
+	if queued.Code >= 400 {
+		writeErr(w, queued.Code, "worker_error", "worker error")
 		return
 	}
-	writeJSON(w, out)
+	writeJSON(w, queued.Body)
+}
+
+// enqueueFullRescan queues the same full_rescan a library rescan starts.
+// The worker scans, embeds, and asks the player to reload when that job finishes.
+func (s *Server) enqueueFullRescan() (int64, error) {
+	queued, err := s.enqueueWorkerJob("full_rescan", fullRescanPayload())
+	if err != nil {
+		return 0, err
+	}
+	if queued.ID < 1 || (!queued.Local && queued.Code >= 400) {
+		return 0, fmt.Errorf("full_rescan was not queued")
+	}
+	return queued.ID, nil
+}
+
+// enqueueWorkerJob posts kind to the worker. When the worker cannot be
+// reached, the same payload is inserted locally. An HTTP error from a
+// reachable worker is returned as Code and does not insert a second row.
+func (s *Server) enqueueWorkerJob(kind string, payload map[string]any) (workerJob, error) {
+	s.ensureWorkerBeforeEnqueue()
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return workerJob{}, err
+	}
+	out, code, err := s.proxyWorker("POST", "/jobs", map[string]any{"kind": kind, "payload": payload})
+	if err != nil {
+		if s.Store == nil {
+			return workerJob{}, err
+		}
+		id, e2 := s.Store.EnqueueJob(kind, string(body))
+		if e2 != nil {
+			return workerJob{}, err
+		}
+		return workerJob{ID: id, Local: true}, nil
+	}
+	if code >= 400 {
+		return workerJob{Code: code, Body: out}, nil
+	}
+	id, _ := jsonInt64(out["id"])
+	return workerJob{ID: id, Code: code, Body: out}, nil
+}
+
+func jsonInt64(v any) (int64, bool) {
+	switch n := v.(type) {
+	case float64:
+		if n < 1 || n != float64(int64(n)) {
+			return 0, false
+		}
+		return int64(n), true
+	case int64:
+		return n, n > 0
+	case int:
+		return int64(n), n > 0
+	case json.Number:
+		i, err := n.Int64()
+		return i, err == nil && i > 0
+	default:
+		return 0, false
+	}
 }
 
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {

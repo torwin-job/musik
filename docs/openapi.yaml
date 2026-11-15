@@ -341,6 +341,221 @@ components:
         token:
           type: string
           description: Opaque secret shown only on creation or replacement.
+    Plugin:
+      type: object
+      description: An installed plugin the player can run. The executable path is omitted.
+      required:
+      - id
+      - capabilities
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,62}$
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum:
+            - library.import_url
+            - library.search
+    PluginRejection:
+      type: object
+      description: A manifest left inactive. source is a local path for the administrator who installed it.
+      required:
+      - reason
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        reason:
+          type: string
+    PluginCatalog:
+      type: object
+      required:
+      - plugins
+      - rejected
+      - count
+      properties:
+        plugins:
+          type: array
+          items:
+            $ref: '#/components/schemas/Plugin'
+        rejected:
+          type: array
+          items:
+            $ref: '#/components/schemas/PluginRejection'
+        count:
+          type: integer
+          description: Number of active plugins.
+    PluginImportRequest:
+      type: object
+      required:
+      - url
+      properties:
+        url:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: Address to import. One line, no control characters. Stored for the running task and omitted
+            from this response, later status responses, and logs.
+    PluginSearchRequest:
+      type: object
+      required:
+      - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Search text. One line, no control characters. Kept out of logs and process arguments.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 20
+          description: Maximum number of items. Defaults to 8 when omitted.
+    PluginSearchItem:
+      type: object
+      required:
+      - title
+      - url
+      properties:
+        title:
+          type: string
+        artist:
+          type: string
+        url:
+          type: string
+          description: Opaque address for a later library.import_url call. The player checks text grammar only.
+        duration:
+          type: integer
+          minimum: 0
+          description: Length in seconds, when the plugin knows it.
+    PluginSearchResult:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/PluginSearchItem'
+    PluginJob:
+      type: object
+      description: Admin view of a plugin task. The import URL is not a property of this object.
+      required:
+      - id
+      - plugin_id
+      - action
+      - status
+      - error
+      - error_code
+      - progress
+      - result
+      - downstream_job_id
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: integer
+        plugin_id:
+          type: string
+        action:
+          type: string
+          enum:
+          - library.import_url
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - done
+          - error
+          - cancelled
+        error:
+          type: string
+        error_code:
+          type: string
+        progress:
+          type: object
+          nullable: true
+          description: Latest progress line, or null. The import URL is redacted from message and from each item title. items is one row per track.
+          properties:
+            pct:
+              type: number
+              minimum: 0
+              maximum: 100
+            phase:
+              type: string
+            message:
+              type: string
+            items:
+              type: array
+              maxItems: 100
+              items:
+                type: object
+                required: [title, status]
+                properties:
+                  title:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, running, done, error]
+                  pct:
+                    type: number
+                    minimum: 0
+                    maximum: 100
+        result:
+          type: object
+          nullable: true
+          description: Files the plugin wrote, or null.
+          properties:
+            paths:
+              type: array
+              items:
+                type: string
+              description: Library-relative paths. The player checks they stay inside MUSIK_LIBRARY before queueing
+                full_rescan.
+        downstream_job_id:
+          type: integer
+          nullable: true
+          description: full_rescan job queued after a successful import. Null until that import finishes.
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    PluginImportAccepted:
+      allOf:
+      - $ref: '#/components/schemas/PluginJob'
+      - type: object
+        required:
+        - ok
+        - job_id
+        properties:
+          ok:
+            type: boolean
+          job_id:
+            type: integer
+            description: Same value as id.
+    PluginJobList:
+      type: object
+      required:
+      - jobs
+      - count
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PluginJob'
+        count:
+          type: integer
 security:
 - bearerAuth: []
 - cookieAuth: []
@@ -618,6 +833,234 @@ paths:
       responses:
         '200':
           description: Tracks, artists and albums from favorites. Liked tracks outside the cosine top stay eligible. Empty favorites return empty=true and hint.
+  /api/plugins:
+    get:
+      summary: List installed plugins and their capabilities
+      description: Admin only. Active plugins and manifests left inactive. Executable paths are omitted. The player
+        does not download plugins. Device tokens cannot call this route.
+      responses:
+        '200':
+          description: Plugin catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginCatalog'
+        '503':
+          description: Plugins are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/plugins/{id}/import:
+    post:
+      summary: Import a URL with a plugin
+      description: Admin only. Starts a library.import_url task. The URL is stored for the task and is omitted from
+        this response and from later status responses. A successful import queues full_rescan, which scans, embeds,
+        and reloads the catalog. Device tokens cannot call this route.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,62}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PluginImportRequest'
+      responses:
+        '200':
+          description: Plugin job. id and job_id match. status starts as pending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginImportAccepted'
+        '400':
+          description: url is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Plugin not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Plugins or the library are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/plugins/{id}/search:
+    post:
+      summary: Search with a plugin
+      description: Admin only. Synchronous library.search. The query and item URLs stay out of logs and process arguments.
+        Disconnecting the client sends SIGTERM to the plugin. The timeout is shorter than a download. This route does
+        not create a plugin job and does not queue full_rescan. Device tokens cannot call this route.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,62}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PluginSearchRequest'
+      responses:
+        '200':
+          description: Search items. url is an opaque address for library.import_url.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginSearchResult'
+        '400':
+          description: query or limit is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Plugin not found or library.search is not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: The plugin failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Plugins are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '504':
+          description: The plugin timed out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/plugin-jobs:
+    get:
+      summary: List plugin jobs
+      description: Admin only. Import URLs are omitted.
+      parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - pending
+          - running
+          - done
+          - error
+          - cancelled
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+      responses:
+        '200':
+          description: Plugin jobs without import URLs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginJobList'
+        '503':
+          description: Plugins are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/plugin-jobs/{id}:
+    get:
+      summary: Get plugin job status and progress
+      description: Admin only. progress is the latest plugin progress line. downstream_job_id is the full_rescan job
+        queued after a successful import. The import URL is omitted.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Plugin job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginJob'
+        '400':
+          description: bad id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Plugins are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/plugin-jobs/{id}/cancel:
+    post:
+      summary: Cancel a plugin job
+      description: Admin only. Cancels a pending or running task. A finished task returns 409.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Plugin job after cancellation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginJob'
+        '400':
+          description: bad id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Plugin job is not running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Plugins are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/jobs:
     get:
       summary: List jobs

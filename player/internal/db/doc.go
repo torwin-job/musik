@@ -22,6 +22,7 @@
 //	tags.go             custom tags
 //	transition_stats.go outcome-aware A→B weights
 //	jobs.go             worker job queue
+//	plugin_jobs.go      plugin import tasks, separate from the worker queue
 //	metrics.go          weekly recommendation metrics
 //	monitor.go          recommendation policy and training rows
 //	explore.go          bandit arms and explore bounds

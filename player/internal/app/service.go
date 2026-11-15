@@ -33,13 +33,17 @@ type Service struct {
 	// Catalog is the process-wide embedding catalog. Profile indexes attach
 	// to it; they do not each load their own copy.
 	Catalog *index.CatalogSource
+	// Plugins discovers local executables and runs their import tasks.
+	Plugins *PluginHost
 }
 
 func New(cfg config.Config, store *db.Store, idx *index.Index, tp *taste.Profile, play *playback.Engine, client *http.Client) *Service {
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
-	return &Service{Cfg: cfg, Store: store, Idx: idx, Taste: tp, Play: play, HTTP: client, Catalog: index.NewCatalogSource(store)}
+	service := &Service{Cfg: cfg, Store: store, Idx: idx, Taste: tp, Play: play, HTTP: client, Catalog: index.NewCatalogSource(store)}
+	service.Plugins = newPluginHost(cfg, store)
+	return service
 }
 
 func (s *Service) Reload() error {

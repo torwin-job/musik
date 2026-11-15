@@ -158,6 +158,11 @@ def _run_daily(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_mix_pack(payload: dict[str, Any]) -> dict[str, Any]:
+    from musik.brain.mixes import resolve_mix_contract
+
+    # Resolve the shelf contract before any DB work so a missing mixes.json
+    # fails instantly instead of running album_tips and then erroring.
+    mixes = resolve_mix_contract(payload.get("mixes"))
     # refresh tips first so "Новинки" has data
     try:
         rebuild_discover_tips()
@@ -169,7 +174,7 @@ def _run_mix_pack(payload: dict[str, Any]) -> dict[str, Any]:
         weekday_size=int(payload.get("weekday_size", 25)),
         weekly_size=int(payload.get("weekly_size", 40)),
         new_size=int(payload.get("new_size", 20)),
-        mixes=payload.get("mixes"),
+        mixes=mixes,
     )
 
 

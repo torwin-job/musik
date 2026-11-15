@@ -75,6 +75,11 @@ MUSIK_IMAGE_TAG=latest
 MUSIK_UI=original
 ```
 
+Плагины в образ не входят. Обновлённый Compose монтирует один каталог с хоста
+(`MUSIK_PLUGIN_DIRS` или `./data/plugins`, если переменная пустая) в player
+на запись как `/plugins`. Библиотека у player по-прежнему на запись, у worker —
+только чтение. Куда положить manifest — в [DEPLOY.md](DEPLOY.md#плагины).
+
 Не задавайте `MUSIK_DB_PATH` и `MUSIK_DATABASE_URL`: Compose сам указывает на
 прежнюю базу `/data/db/musik.db`.
 
@@ -96,7 +101,7 @@ Update complete; worker and player are healthy.
 Проверьте:
 
 ```bash
-docker compose logs migrate | tail -3    # Verified pre-migration backup …, Database ready: schema v14
+docker compose logs migrate | tail -3    # Verified pre-migration backup …, Database ready: schema v15
 curl -s http://127.0.0.1:8787/api/health # "ok":true
 ```
 
@@ -221,7 +226,7 @@ MUSIK_IMPORT_SQLITE=1
 
 Запустите `./scripts/update-compose.sh` (или `--build`). В логе `migrate`
 появятся строки `SQLite import verified: <имя>-transfer.json` и
-`Database ready: schema v14, backend=postgresql`. Отчёт о переносе лежит в
+`Database ready: schema v15, backend=postgresql`. Отчёт о переносе лежит в
 `/data/backups`.
 
 После проверки уберите `MUSIK_IMPORT_SQLITE=1` из `.env`. Повторный импорт той

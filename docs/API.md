@@ -12,7 +12,7 @@ JSON, кроме стрима, обложек, фото и `POST /api/library/up
 | `public` | без сессии | health, вход, манифест, чужой MP3-эфир |
 | `user` | вошедший аккаунт | пароль, свои профили, свои токены устройств |
 | `profile` | активный профиль слушателя | каталог, радио, вкус, плейлисты, своя статистика |
-| `admin` | администратор установки | библиотека, задания, настройки, приглашения, учётки |
+| `admin` | администратор установки | библиотека, задания, плагины, настройки, приглашения, учётки |
 
 В режиме одного пароля cookie или `Authorization: Bearer <MUSIK_API_TOKEN>` открывают `profile` и `admin`. `MUSIK_AUTH_DISABLED=1` выключает проверку и не предназначен для публичного адреса. Логин: не больше 5 попыток в минуту с одного IP.
 
@@ -272,5 +272,13 @@ JSON, кроме стрима, обложек, фото и `POST /api/library/up
 | GET | `/api/jobs` | список. `?status=` |
 | GET | `/api/jobs/{id}` | одно задание. Токен устройства может прочитать своё |
 | POST | `/api/jobs/{kind}` | `scan`, `embed`, `clusters`, `daily`, `album_tips`, `full_rescan`, `mix_pack`, `train_ranker`. Токен устройства может поставить только `mix_pack`. В ответе одинаковые `id` и `job_id` |
+| GET | `/api/plugins` | установленные плагины и manifest, оставленные неактивными. Пути executable в ответе нет |
+| POST | `/api/plugins/{id}/import` | `{url}` — задача `library.import_url`. URL хранится у задачи и не попадает в ответ, статус и логи. Успех ставит `full_rescan`; в ответе одинаковые `id` и `job_id`. Неверный URL — `400 invalid_url`, нет плагина — `404`, нет каталога библиотеки — `503 library_unavailable` |
+| POST | `/api/plugins/{id}/search` | `{query, limit?}` — синхронный `library.search`. `limit` от 1 до 20, по умолчанию 8. Ответ `{items}`: `title`, `artist`, `url`, `duration`. `url` — непрозрачный адрес для импорта. Запрос и адреса не попадают в логи и argv. Обрыв клиента шлёт `SIGTERM`. Таймаут короче скачивания. Не создаёт задачу и не ставит `full_rescan`. Нет плагина или нет `library.search` — `404`, плохой запрос — `400 invalid_query`, плохой `limit` — `400 invalid_limit`, таймаут — `504` |
+| GET | `/api/plugin-jobs` | список задач плагинов. `?status=` и `?limit=` |
+| GET | `/api/plugin-jobs/{id}` | статус, последний progress (`pct`, `phase`, `message`, `items` по трекам: `title`, `status`, `pct`), result и `downstream_job_id` задания `full_rescan` после успешного импорта |
+| POST | `/api/plugin-jobs/{id}/cancel` | отмена `pending` или `running`. Уже завершённая задача — `409 not_cancellable` |
+
+Токен устройства к плагинам не допускается. Контракт executable — [sdk/plugin/v1/README.md](../sdk/plugin/v1/README.md).
 
 Переменные окружения — в [CONFIG.md](CONFIG.md). Установка — в [DEPLOY.md](DEPLOY.md).

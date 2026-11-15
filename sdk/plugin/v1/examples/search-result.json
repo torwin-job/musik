@@ -1,0 +1,15 @@
+{
+  "type": "result",
+  "protocol": "1",
+  "id": "job-1",
+  "result": {
+    "items": [
+      {
+        "title": "Example Track",
+        "artist": "Example Artist",
+        "url": "https://example.invalid/track",
+        "duration": 248
+      }
+    ]
+  }
+}

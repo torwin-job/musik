@@ -1,6 +1,6 @@
 # Multi-user identity and profile contract
 
-Status: integrated in `home`, schema version 14. Migrations create local users,
+Status: integrated in `home`, schema version 15. Migrations create local users,
 roles, verified OIDC identities, hashed invites, revocable browser sessions,
 user-owned device tokens and an administrator-invariant lock row, then assign
 legacy personal rows to one disabled installation owner and its default

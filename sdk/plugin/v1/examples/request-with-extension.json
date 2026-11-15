@@ -1,0 +1,12 @@
+{
+  "type": "request",
+  "protocol": "1",
+  "id": "job-2",
+  "action": "library.import_url",
+  "input": {
+    "url": "https://example.invalid/track",
+    "library": "/var/lib/musik/library",
+    "label": "keep"
+  },
+  "trace": "abc"
+}

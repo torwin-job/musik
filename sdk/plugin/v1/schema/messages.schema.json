@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/torwin-job/musik/blob/main/sdk/plugin/v1/schema/messages.schema.json",
+  "title": "musik plugin JSONL message",
+  "$comment": "One JSON object per line on stdin (request) or stdout (progress, result, error). Unknown properties are kept. protocol is the exact string 1.",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/progress" },
+    { "$ref": "#/$defs/result" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["type", "protocol", "id", "action", "input"],
+      "properties": {
+        "type": { "const": "request" },
+        "protocol": { "const": "1" },
+        "id": { "$ref": "#/$defs/requestId" },
+        "action": { "$ref": "#/$defs/capability" },
+        "input": { "type": "object", "additionalProperties": true }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "action": { "const": "library.import_url" } },
+            "required": ["action"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/importURLInput" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "action": { "const": "library.search" } },
+            "required": ["action"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/searchInput" }
+            }
+          }
+        }
+      ]
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["type", "protocol", "id", "progress"],
+      "properties": {
+        "type": { "const": "progress" },
+        "protocol": { "const": "1" },
+        "id": { "$ref": "#/$defs/requestId" },
+        "progress": {
+          "type": "object",
+          "additionalProperties": true,
+          "minProperties": 1,
+          "anyOf": [
+            { "required": ["pct"] },
+            { "required": ["phase"] },
+            { "required": ["message"] }
+          ],
+          "properties": {
+            "pct": { "type": "number", "minimum": 0, "maximum": 100 },
+            "phase": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[^\\x00-\\x1f]+$"
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 100,
+              "description": "One row per track. The host shows these rows while the import runs.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["title", "status"],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[^\\x00-\\x1f]+$"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["pending", "running", "done", "error"]
+                  },
+                  "pct": { "type": "number", "minimum": 0, "maximum": 100 }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["type", "protocol", "id", "result"],
+      "properties": {
+        "type": { "const": "result" },
+        "protocol": { "const": "1" },
+        "id": { "$ref": "#/$defs/requestId" },
+        "result": {
+          "oneOf": [
+            { "$ref": "#/$defs/importResult" },
+            { "$ref": "#/$defs/searchResult" }
+          ]
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["type", "protocol", "id", "error"],
+      "properties": {
+        "type": { "const": "error" },
+        "protocol": { "const": "1" },
+        "id": { "$ref": "#/$defs/requestId" },
+        "error": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "description": "Known codes: invalid_request, protocol_mismatch, unsupported_action, unsupported_url, download_failed, write_failed, cancelled, internal. Any other well-formed code is still a failure."
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "pattern": "^[^\\x00-\\x1f]+$"
+            }
+          }
+        }
+      }
+    },
+    "importResult": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["paths"],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/relativePath" }
+        }
+      }
+    },
+    "searchResult": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["items"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/searchItem" }
+        }
+      }
+    },
+    "searchItem": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["title", "url"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "artist": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[^\\x00-\\x1f]+$",
+          "description": "Opaque address for a later library.import_url request. Peers check the text grammar and do not inspect the host."
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 864000,
+          "description": "Length in seconds, when the plugin knows it."
+        }
+      }
+    },
+    "searchInput": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["query"],
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^[^\\x00-\\x1f]+$",
+          "description": "Search text. Hosts and plugins keep it out of logs and process arguments."
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum number of items. Defaults to 8 when omitted."
+        }
+      }
+    },
+    "importURLInput": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["url", "library"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[^\\x00-\\x1f]+$",
+          "description": "Address to import. Hosts and plugins keep it out of logs and public responses."
+        },
+        "library": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^/[^\\x00-\\x1f]*$",
+          "description": "Absolute library root the plugin may write under."
+        },
+        "dest_dir": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "allOf": [
+        { "pattern": "^[^/\\\\\\x00-\\x1f]+(?:/[^/\\\\\\x00-\\x1f]+)*$" },
+        { "not": { "pattern": "(^|/)\\.\\.?(?:/|$)" } },
+        { "not": { "pattern": "\\.part$" } }
+      ],
+      "description": "Slash-separated path relative to the library root. Every segment is non-empty. The segments \".\" and \"..\" are invalid. A finished path ends with a suffix other than \".part\"."
+    },
+    "requestId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "capability": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(?:\\.[a-z][a-z0-9_-]*)+$"
+    }
+  }
+}

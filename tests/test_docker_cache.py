@@ -14,6 +14,8 @@ def test_worker_dependencies_are_cached_before_source_copy() -> None:
     assert "--mount=type=cache,target=/root/.cache/pip" in dockerfile
     assert "--no-cache-dir" not in dockerfile
     assert "download.pytorch.org/whl/cpu" in dockerfile
+    assert "COPY player/internal/playback/mixes.json" in dockerfile
+    assert "MUSIK_MIX_CONTRACT=/app/player/internal/playback/mixes.json" in dockerfile
 
 
 def test_docker_context_excludes_runtime_and_build_data() -> None:

@@ -33,6 +33,12 @@ def test_fresh_migration_is_idempotent(tmp_path) -> None:
             "id", "secret_hash", "user_id", "profile_id", "name", "created_at",
             "last_used_at", "expires_at", "revoked_at",
         }
+        plugin_jobs = {row[1] for row in conn.execute("PRAGMA table_info(plugin_jobs)")}
+        assert plugin_jobs == {
+            "id", "plugin_id", "action", "input_json", "status", "progress_json",
+            "result_json", "error", "error_code", "downstream_job_id",
+            "created_at", "updated_at",
+        }
         assert conn.execute(
             "SELECT value FROM installation_state WHERE key='active_admin_guard'"
         ).fetchone() == ("1",)
@@ -79,6 +85,7 @@ def test_foundation_schema_has_normalized_references_and_versioned_json(tmp_path
         assert {"type", "rule_json", "archived_at", "updated_at"} <= cols
         item_cols = {row[1] for row in conn.execute("PRAGMA table_info(playlist_tracks)")}
         assert {"item_id", "source", "added_at"} <= item_cols
+        assert "plugin_jobs" in tables
         assert {
             "recommendation_requests",
             "request_contexts",
@@ -297,18 +304,26 @@ def test_home_postgres_v8_upgrade_preserves_owned_data(empty_postgres_database, 
         for column in ('is_remaster', 'artist_segments', 'album_artist', 'is_compilation'):
             conn.execute(text(f'ALTER TABLE tracks DROP COLUMN {column}'))
         conn.execute(text('ALTER TABLE external_identities DROP COLUMN password_hash'))
+        conn.execute(text('DROP TABLE plugin_jobs'))
         conn.execute(text("UPDATE alembic_version SET version_num='musik_8'"))
     try:
-        assert migrate_database(url, tmp_path / 'unused.db') == 14
-        assert migrate_database(url, tmp_path / 'unused.db') == 14
+        assert migrate_database(url, tmp_path / 'unused.db') == LATEST_SCHEMA_VERSION
+        assert migrate_database(url, tmp_path / 'unused.db') == LATEST_SCHEMA_VERSION
         with engine.connect() as conn:
-            assert conn.scalar(text('SELECT version_num FROM alembic_version')) == 'musik_14'
+            assert conn.scalar(text('SELECT version_num FROM alembic_version')) == f'musik_{LATEST_SCHEMA_VERSION}'
             assert conn.execute(text('SELECT title,is_remaster,is_compilation FROM tracks')).one() == ('Preserved', 0, 0)
             assert conn.execute(text('SELECT profile_id,track_id FROM favorites')).one() == (profile, 1)
             assert conn.execute(text('SELECT profile_id,track_id FROM listening_history')).one() == (profile, 1)
             assert conn.execute(text('SELECT user_id,profile_id FROM device_tokens')).one() == (user, profile)
             assert conn.execute(text('SELECT user_id,password_hash FROM external_identities')).one() == (user, None)
             assert conn.scalar(text('SELECT count(*) FROM users')) == 1
-            assert {'artist_photos', 'artwork_lookups', 'playback_state'} <= set(inspect(conn).get_table_names())
+            names = set(inspect(conn).get_table_names())
+            assert {'artist_photos', 'artwork_lookups', 'playback_state', 'plugin_jobs'} <= names
+            plugin_jobs = {column['name'] for column in inspect(conn).get_columns('plugin_jobs')}
+            assert {
+                'id', 'plugin_id', 'action', 'input_json', 'status', 'progress_json',
+                'result_json', 'error', 'error_code', 'downstream_job_id',
+                'created_at', 'updated_at',
+            } <= plugin_jobs
     finally:
         engine.dispose()

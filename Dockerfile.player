@@ -16,8 +16,9 @@ ENV MUSIK_PLAYER_ADDR=:8787 \
     MUSIK_DATA_DIR=/data \
     MUSIK_WORKER_AUTOSTART=0 \
     MUSIK_LIBRARY=/music \
+    MUSIK_PLUGIN_DIRS=/plugins \
     MUSIK_WORKER_URL=http://worker:8790 \
     MUSIK_ROOT=/app
 EXPOSE 8787
-VOLUME ["/data", "/music"]
+VOLUME ["/data", "/music", "/plugins"]
 CMD ["musik-player"]

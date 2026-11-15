@@ -145,6 +145,12 @@ var apiRoutes = []routeDescriptor{
 	{"POST", "/api/jobs/{kind}", scopeAdmin, (*Server).handleEnqueueJob},
 	{"GET", "/api/jobs/{id}", scopeAdmin, (*Server).handleGetJob},
 	{"GET", "/api/jobs", scopeAdmin, (*Server).handleListJobs},
+	{"GET", "/api/plugins", scopeAdmin, (*Server).handlePlugins},
+	{"POST", "/api/plugins/{id}/import", scopeAdmin, (*Server).handlePluginImport},
+	{"POST", "/api/plugins/{id}/search", scopeAdmin, (*Server).handlePluginSearch},
+	{"GET", "/api/plugin-jobs", scopeAdmin, (*Server).handleListPluginJobs},
+	{"GET", "/api/plugin-jobs/{id}", scopeAdmin, (*Server).handleGetPluginJob},
+	{"POST", "/api/plugin-jobs/{id}/cancel", scopeAdmin, (*Server).handleCancelPluginJob},
 	{"GET", "/api/metrics/weekly", scopeProfile, (*Server).handleWeeklyMetrics},
 	{"GET", "/api/metrics/listening", scopeProfile, (*Server).handleListeningMemory},
 	{"GET", "/api/metrics/recommendations", scopeProfile, (*Server).handleRecommendationMetrics},
@@ -257,6 +263,7 @@ func New(cfg config.Config, store *db.Store, idx *index.Index, tp *taste.Profile
 	// and engines belong to profiles and are opened on demand.
 	if cfg.MultiUser {
 		s.App = app.New(cfg, store, nil, nil, nil, s.HTTP)
+		s.bindPluginRescan()
 		s.Media = media.NewCatalog(cfg, s.App.Catalog)
 		go s.runBackgroundIO()
 		return s
@@ -266,10 +273,18 @@ func New(cfg config.Config, store *db.Store, idx *index.Index, tp *taste.Profile
 	s.Taste = tp
 	s.Play = playback.New(cfg, store, idx, tp, builder)
 	s.App = app.New(cfg, store, idx, tp, s.Play, s.HTTP)
+	s.bindPluginRescan()
 	s.Media = media.New(cfg, idx)
 	s.wire(s.Play)
 	go s.runBackgroundIO()
 	return s
+}
+
+func (s *Server) bindPluginRescan() {
+	if s.App == nil || s.App.Plugins == nil {
+		return
+	}
+	s.App.Plugins.SetCatalogRescan(s.enqueueFullRescan)
 }
 
 func (s *Server) wire(play *playback.Engine) {

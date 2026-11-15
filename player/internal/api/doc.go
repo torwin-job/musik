@@ -49,6 +49,7 @@
 //	rules.go         radio rules
 //	blocks.go        hard-block filtering for generated lists
 //	jobs.go          worker job proxy
+//	plugins.go       plugin discovery, import tasks, progress, and cancel
 //	worker.go        worker autostart
 //	metrics.go       weekly stats, on-this-day, year in music, recommendation stats
 //	lyrics.go        track lyrics

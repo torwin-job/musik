@@ -1,0 +1,10 @@
+{
+  "type": "progress",
+  "protocol": "1",
+  "id": "job-1",
+  "progress": {
+    "pct": 40,
+    "phase": "download",
+    "message": "fetching audio"
+  }
+}
