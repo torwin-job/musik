@@ -74,7 +74,8 @@
       <nav class="tabs" aria-label="Разделы">
         <button type="button" class="tab active" data-view="home" aria-current="page">Главная</button>
         <button type="button" class="tab" data-view="player">Сейчас</button>
-        <button type="button" class="tab" data-view="library">Библиотека</button>
+        <button type="button" class="tab" data-view="library" data-nav="collection" data-lib-default="tracks">Библиотека</button>
+        <button type="button" class="tab" data-view="library" data-nav="map" data-lib-default="map">Карта</button>
         <button type="button" class="tab" data-view="collections">Плейлисты</button>
         <button type="button" class="tab" data-view="profile">Профиль</button>
         <button type="button" class="tab" data-view="upload">Загрузка</button>
@@ -325,7 +326,7 @@
       </section>
 
       <section id="view-library" class="view">
-        <h1 class="page-title">Библиотека</h1>
+        <h1 class="page-title" id="lib-title" data-default-title="Библиотека">Библиотека</h1>
         <p class="sub" id="lib-count">—</p>
         <div class="seg" role="tablist" aria-label="Разделы библиотеки">
           <button type="button" class="seg-btn active" data-lib="tracks">Треки</button>
@@ -354,6 +355,39 @@
         </div>
         <ul id="lib-list" class="track-list"></ul>
         <div id="lib-grid" class="lib-grid" hidden></div>
+        <div id="lib-map" class="lib-map" hidden>
+          <div class="map-toolbar">
+            <select id="map-genre" class="map-genre" aria-label="Жанр"><option value="">Все жанры</option></select>
+            <button type="button" class="map-btn" id="map-lasso" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 4c4.6 0 8 2.3 8 5.3s-3.4 5.2-8 5.2c-1.2 0-2.3-.2-3.3-.5M7 13.4C5 12.5 4 11 4 9.3 4 6.3 7.4 4 12 4M7.6 13.6c-1.5.6-2.4 1.7-2.4 2.8 0 1.4 1.4 2.4 3.2 2.4.9 0 1.5.5 1.5 1.2"/></svg>
+              <span>Выделить область</span>
+            </button>
+            <div class="map-zoom">
+              <button type="button" class="map-icon" id="map-zoom-out" aria-label="Отдалить">−</button>
+              <button type="button" class="map-icon" id="map-zoom-in" aria-label="Приблизить">+</button>
+              <button type="button" class="map-icon" id="map-fit" aria-label="Показать всю карту" title="Показать всю карту">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/></g><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>
+              </button>
+              <button type="button" class="map-icon" id="map-full" aria-label="На весь экран" aria-pressed="false" title="На весь экран">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path class="map-full-on" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/><path class="map-full-off" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M9 4v4a1 1 0 0 1-1 1H4M20 9h-4a1 1 0 0 1-1-1V4M15 20v-4a1 1 0 0 1 1-1h4M4 15h4a1 1 0 0 1 1 1v4"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="map-layers" id="map-layers" role="group" aria-label="Слои карты"></div>
+          <div class="map-stage" id="map-stage">
+            <canvas id="map-canvas" aria-label="Карта библиотеки: похожие по звучанию треки рядом"></canvas>
+            <div class="map-labels" id="map-labels"></div>
+            <canvas class="map-overlay" id="map-overlay" aria-hidden="true"></canvas>
+            <div class="map-card" id="map-card" hidden></div>
+            <p class="map-empty sub" id="map-empty" hidden></p>
+          </div>
+          <div class="map-selection" id="map-selection" hidden>
+            <span id="map-sel-count"></span>
+            <button type="button" class="btn primary" id="map-sel-play">Играть</button>
+            <button type="button" class="btn" id="map-sel-shuffle">Перемешать</button>
+            <button type="button" class="map-icon" id="map-sel-clear" aria-label="Сбросить выделение">×</button>
+          </div>
+        </div>
       </section>
 
       <section id="view-collections" class="view">
@@ -651,7 +685,8 @@
     <nav class="mobile-nav" id="mobile-nav" aria-label="Разделы">
       <button type="button" class="tab active" data-view="home">Главная</button>
       <button type="button" class="tab" data-view="player">Сейчас</button>
-      <button type="button" class="tab" data-view="library">Библиотека</button>
+      <button type="button" class="tab" data-view="library" data-nav="collection" data-lib-default="tracks">Библиотека</button>
+        <button type="button" class="tab" data-view="library" data-nav="map" data-lib-default="map">Карта</button>
       <button type="button" class="tab" data-view="collections">Плейлисты</button>
       <button type="button" class="tab" data-view="profile">Профиль</button>
     </nav>
@@ -677,6 +712,6 @@
     </div>
   </div>
   <div id="toast" class="toast" hidden></div>
-  <script src="/app.js?v=plugin-rainedev1"></script>
+  <script src="/app.js?v=map-v3"></script>
 </body>
 </html>

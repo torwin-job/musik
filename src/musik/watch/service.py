@@ -122,7 +122,7 @@ def run_incremental_pipeline(
     """scan → embed (pending only) → optional clusters/mixes → notify player."""
     from musik.discover.albums import rebuild_discover_tips
     from musik.embed import embed_library
-    from musik.index import assign_clusters
+    from musik.index import assign_clusters, build_library_map
     from musik.jobs.runner import _notify_player_reload
     from musik.scanner import scan_library
 
@@ -147,6 +147,10 @@ def run_incremental_pipeline(
     if do_clusters:
         log.info("watch pipeline: clusters")
         out["clusters"] = assign_clusters()
+        try:
+            out["library_map"] = build_library_map()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("library_map: %s", exc)
     if do_mixes:
         log.info("watch pipeline: album tips + mix_pack")
         try:

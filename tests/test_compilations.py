@@ -60,6 +60,23 @@ def test_m4a_compilation_flag_comes_from_cpil(tmp_path: Path) -> None:
     assert tags.album_artist is None
 
 
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is required to write an M4A file")
+def test_m4a_embedded_cover_is_read(tmp_path: Path) -> None:
+    from mutagen.mp4 import MP4Cover
+
+    path = tmp_path / "track.m4a"
+    subprocess.run(
+        ["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "sine=duration=1",
+         "-c:a", "aac", str(path)],
+        check=True,
+    )
+    jpeg = b"\xff\xd8\xff\xe0 not a real jpeg \xff\xd9"
+    audio = MP4(path)
+    audio["covr"] = [MP4Cover(jpeg, imageformat=MP4Cover.FORMAT_JPEG)]
+    audio.save()
+    assert read_tags(path).artwork_bytes == jpeg
+
+
 def test_scan_refreshes_tags_of_unchanged_files_once(
     tmp_path: Path, monkeypatch, test_database
 ) -> None:

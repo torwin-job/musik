@@ -71,6 +71,7 @@ let libSort = "artist";
 let plAddTab = "tracks";
 let plAddSort = "artist";
 let libTimer = null;
+let libCountText = "";
 let seeking = false;
 let playbackGen = 0;
 let closeEvent = null; // one event_id for track_end/skip of the track now closing
@@ -437,12 +438,14 @@ function setSeekPct(pct) {
   $("seek").style.setProperty("--seek-pct", `${Math.max(0, Math.min(100, pct))}%`);
 }
 
-const NAV_OF_VIEW = { home: "listen", library: "collection", collections: "collection", profile: "me", upload: "me", player: "now" };
+const NAV_OF_VIEW = { home: "listen", library: "collection", map: "map", collections: "collection", profile: "me", upload: "me", player: "now" };
 
 function setView(name, nav = NAV_OF_VIEW[name]) {
   document.body.dataset.nav = nav || "";
   const title = $("lib-title");
-  if (title) title.textContent = nav === "search" ? "Поиск" : "Коллекция";
+  if (title) {
+    title.textContent = nav === "search" ? "Поиск" : nav === "map" ? "Карта" : title.dataset.defaultTitle || "Коллекция";
+  }
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
   document.querySelectorAll(".tab[data-view]").forEach((b) => {
     // In Mozgolika edition primary tabs light up for their whole section and
@@ -2113,6 +2116,1100 @@ async function showTips(kind) {
   });
 }
 
+// Library map (Mozgolika "Карта"): the worker job library_map lays the CLAP
+// embeddings out with UMAP into [0,1]² and adds mood labels and sound
+// neighbours. Everything else is data the player already keeps per profile:
+// plays and k-means clusters from /api/library, favourites, and listened
+// transitions (sent with the map). The view is a scale plus a pan in CSS px.
+const MAP_PLAY_LIMIT = 500;
+const MAP_REFRESH_MS = 120000;
+const MAP_LAYERS_KEY = "musik_map_layers";
+const MAP_LAYERS = [
+  ["heat", "Тепло"],
+  ["favorites", "Любимое"],
+  ["transitions", "Мои переходы"],
+  ["similar", "Похожие"],
+  ["artists", "Артисты"],
+  ["focus", "Связи трека"],
+  ["islands", "Острова"],
+];
+const MAP_LAYERS_DEFAULT = {
+  heat: true,
+  favorites: false,
+  transitions: true,
+  similar: false,
+  artists: false,
+  focus: true,
+  islands: true,
+};
+// Denser than this many points on screen, neighbour lines are only noise.
+const MAP_SIMILAR_MAX = 20000;
+// Transitions drawn at once: the strongest of those touching the screen.
+const MAP_TRANSITIONS_SHOWN = 250;
+const MAP_COVER_START = 1.5;
+const MAP_COVER_END = 8;
+const MAP_COVER_CACHE_LIMIT = 256;
+const libMap = {
+  data: null,
+  loading: null,
+  loadedAt: 0,
+  genre: -1,
+  lasso: false,
+  path: null,
+  selected: null,
+  focus: -1,
+  focusNbrs: null,
+  view: { s: 1, tx: 0, ty: 0 },
+  w: 0,
+  h: 0,
+  dpr: 1,
+  dirty: true,
+  raf: 0,
+  idle: 0,
+  pointers: new Map(),
+  gesture: null,
+  wired: false,
+  layers: loadMapLayers(),
+  labelItems: [],
+  sprite: null,
+  covers: new Map(),
+  coverProgress: 0,
+  coverTime: 0,
+  coverAnimating: false,
+};
+
+function loadMapLayers() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MAP_LAYERS_KEY) || "null");
+    if (saved && typeof saved === "object") return { ...MAP_LAYERS_DEFAULT, ...saved };
+  } catch {
+    // Storage may be blocked; defaults are fine.
+  }
+  return { ...MAP_LAYERS_DEFAULT };
+}
+
+function saveMapLayers() {
+  try {
+    localStorage.setItem(MAP_LAYERS_KEY, JSON.stringify(libMap.layers));
+  } catch {
+    // Not remembered, still applied.
+  }
+}
+
+function mapVisible() {
+  const el = $("lib-map");
+  return !!el && !el.hidden && !!$("view-library")?.classList.contains("active");
+}
+
+function prepareMap(d) {
+  const pts = d.points || [];
+  const n = pts.length;
+  const k = pts.reduce((m, p) => Math.max(m, p.length - 4), 0);
+  const out = {
+    ready: !!d.ready,
+    total: d.total || 0,
+    genres: d.genres || [],
+    labels: d.labels || [],
+    ids: new Array(n),
+    xs: new Float32Array(n),
+    ys: new Float32Array(n),
+    gs: new Int16Array(n),
+    index: new Map(),
+    k,
+    nbrs: new Int32Array(n * k).fill(-1),
+    trans: [],
+    maxTrans: 0,
+    bbox: [0, 0, 1, 1],
+    plays: new Float32Array(n),
+    maxPlays: 0,
+    clusters: new Int16Array(n).fill(-1),
+    artists: new Array(n).fill(""),
+    artwork: new Array(n).fill(""),
+    artistGroups: [],
+    islands: [],
+  };
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  pts.forEach(([id, x, y, g], i) => {
+    out.ids[i] = id;
+    out.xs[i] = x;
+    out.ys[i] = y;
+    out.gs[i] = g;
+    out.index.set(id, i);
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+    y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  });
+  if (n) out.bbox = [x0, y0, x1, y1];
+  pts.forEach((p, i) => {
+    for (let j = 0; j < k; j++) {
+      const t = p[4 + j] >= 0 ? out.index.get(p[4 + j]) : undefined;
+      if (t !== undefined) out.nbrs[i * k + j] = t;
+    }
+  });
+  for (const [from, to, count] of d.transitions || []) {
+    const a = out.index.get(from);
+    const b = out.index.get(to);
+    if (a === undefined || b === undefined) continue;
+    out.trans.push([a, b, count]);
+    out.maxTrans = Math.max(out.maxTrans, count);
+  }
+  return out;
+}
+
+// Per-profile data from /api/library: plays, clusters and artists. Rerun
+// whenever the library reloads; the layout itself does not change.
+function joinMapProfile(d) {
+  const byId = new Map(library.map((t) => [t.id, t]));
+  const groups = new Map();
+  d.maxPlays = 0;
+  for (let i = 0; i < d.ids.length; i++) {
+    const t = byId.get(d.ids[i]);
+    d.plays[i] = t?.plays || 0;
+    d.clusters[i] = t && t.cluster_id >= 0 ? t.cluster_id : -1;
+    d.artists[i] = (t?.artist || "").trim();
+    d.artwork[i] = t?.artwork || "";
+    d.maxPlays = Math.max(d.maxPlays, d.plays[i]);
+    const key = d.artists[i].toLowerCase();
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(i);
+  }
+  d.artistGroups = [...groups.values()]
+    .filter((g) => g.length > 1)
+    .map((g) => g.sort((a, b) => d.xs[a] - d.xs[b]));
+  d.islands = mapIslands(d);
+}
+
+function mapDensestSpot(d, members) {
+  // The densest point of a sample, then the mean of the members around it, so
+  // a cluster split over two islands is labelled on its main part.
+  const step = Math.max(1, Math.floor(members.length / 300));
+  const sample = members.filter((_, k) => k % step === 0);
+  let best = sample[0];
+  let bestN = -1;
+  for (const a of sample) {
+    let near = 0;
+    for (const b of sample) if (Math.hypot(d.xs[a] - d.xs[b], d.ys[a] - d.ys[b]) < 0.06) near++;
+    if (near > bestN) {
+      bestN = near;
+      best = a;
+    }
+  }
+  let sx = 0, sy = 0, m = 0;
+  for (const i of members) {
+    if (Math.hypot(d.xs[i] - d.xs[best], d.ys[i] - d.ys[best]) > 0.1) continue;
+    sx += d.xs[i];
+    sy += d.ys[i];
+    m++;
+  }
+  return [sx / m, sy / m];
+}
+
+// Islands are the existing k-means clusters (features.cluster_id): labelled
+// with their main genre and their "capital", the artist played most there.
+function mapIslands(d) {
+  const by = new Map();
+  for (let i = 0; i < d.ids.length; i++) {
+    const c = d.clusters[i];
+    if (c < 0) continue;
+    if (!by.has(c)) by.set(c, []);
+    by.get(c).push(i);
+  }
+  const minSize = Math.max(8, d.ids.length * 0.02);
+  const islands = [];
+  for (const members of by.values()) {
+    if (members.length < minSize) continue;
+    const genreCount = new Map();
+    const artistPlays = new Map();
+    const artistTracks = new Map();
+    for (const i of members) {
+      if (d.gs[i] >= 0) genreCount.set(d.gs[i], (genreCount.get(d.gs[i]) || 0) + 1);
+      const a = d.artists[i];
+      if (!a) continue;
+      artistPlays.set(a, (artistPlays.get(a) || 0) + d.plays[i]);
+      artistTracks.set(a, (artistTracks.get(a) || 0) + 1);
+    }
+    const top = (m) => [...m.entries()].sort((a, b) => b[1] - a[1])[0];
+    const g = top(genreCount);
+    const genre = g && g[1] >= members.length * 0.25 ? d.genres[g[0]] : "";
+    const played = top(artistPlays);
+    const most = top(artistTracks);
+    const artist = played && played[1] > 0 ? played[0] : most && most[1] >= 3 ? most[0] : "";
+    if (!genre && !artist) continue;
+    const [x, y] = mapDensestSpot(d, members);
+    const order = [...members].sort((a, b) => d.plays[b] - d.plays[a]);
+    islands.push({ x, y, genre, artist, ids: order.map((i) => d.ids[i]) });
+  }
+  return islands;
+}
+
+async function loadLibraryMap() {
+  libMap.loading ||= api("/api/library/map")
+    .then((d) => {
+      libMap.data = prepareMap(d);
+      joinMapProfile(libMap.data);
+      libMap.loadedAt = Date.now();
+      libMap.selected = null;
+      libMap.focus = -1;
+      renderMapChrome();
+    })
+    .finally(() => {
+      libMap.loading = null;
+    });
+  return libMap.loading;
+}
+
+async function showLibraryMap() {
+  wireLibraryMap();
+  const stale = Date.now() - libMap.loadedAt > MAP_REFRESH_MS;
+  if (!libMap.data || stale) {
+    try {
+      if (libMap.data) loadLibraryMap().catch(console.error);
+      else await loadLibraryMap();
+    } catch (e) {
+      const empty = $("map-empty");
+      empty.hidden = false;
+      empty.textContent = `Не удалось загрузить карту: ${e.message || e}`;
+      return;
+    }
+  } else {
+    // Plays may have changed since the map came in.
+    joinMapProfile(libMap.data);
+    renderMapChrome();
+  }
+  resizeMap();
+}
+
+function renderMapChrome() {
+  const d = libMap.data;
+  if (!d || !$("lib-map")) return;
+  const n = d.ids.length;
+  if (libTab === "map") {
+    $("lib-count").textContent = `${n.toLocaleString("ru-RU")} из ${d.total.toLocaleString("ru-RU")} ${ruPlural(d.total, "трека", "треков", "треков")} на карте`;
+  }
+  const empty = $("map-empty");
+  empty.hidden = n > 0;
+  empty.textContent = !d.ready
+    ? "Карта ещё не построена. Она появится после пересчёта кластеров или задачи «Карта библиотеки»."
+    : "На карте пока нет треков: им нужны аудиоэмбеддинги.";
+
+  const select = $("map-genre");
+  const keep = select.value;
+  select.innerHTML = '<option value="">Все жанры</option>';
+  d.genres.forEach((g, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = g;
+    select.appendChild(opt);
+  });
+  select.value = keep && +keep < d.genres.length ? keep : "";
+  libMap.genre = select.value === "" ? -1 : +select.value;
+  select.hidden = !d.genres.length;
+
+  renderMapLayers();
+  renderMapLabels();
+  renderMapSelection();
+  libMap.dirty = true;
+  requestMap();
+}
+
+function renderMapLayers() {
+  const box = $("map-layers");
+  if (!box) return;
+  const d = libMap.data;
+  const unavailable = {
+    heat: !d.maxPlays && "Пока нет прослушиваний",
+    favorites: !favoriteIds.size && "В избранном пусто",
+    transitions: !d.trans.length && "Переходов пока нет: они копятся, когда треки играют подряд",
+    similar: !d.k && "Появится после следующего пересчёта карты",
+    artists: !d.artistGroups.length && "Нет артистов с несколькими треками",
+    islands: !d.islands.length && "Нет кластеров: они появятся после пересчёта",
+  };
+  box.innerHTML = "";
+  for (const [key, name] of MAP_LAYERS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "map-chip";
+    b.textContent = name;
+    b.setAttribute("aria-pressed", String(!!libMap.layers[key]));
+    if (unavailable[key]) {
+      b.disabled = true;
+      b.title = unavailable[key];
+    }
+    b.onclick = () => {
+      libMap.layers[key] = !libMap.layers[key];
+      saveMapLayers();
+      b.setAttribute("aria-pressed", String(libMap.layers[key]));
+      if (key === "islands") renderMapLabels();
+      libMap.dirty = true;
+      requestMap();
+    };
+    box.appendChild(b);
+  }
+}
+
+function playMapIds(ids, name) {
+  return playFixed({ track_ids: ids.slice(0, MAP_PLAY_LIMIT), name }).catch((e) => toast(e.message || String(e)));
+}
+
+function renderMapLabels() {
+  const d = libMap.data;
+  const box = $("map-labels");
+  box.innerHTML = "";
+  libMap.labelItems = [];
+  // Moods go down first; island labels fill the room that is left.
+  const add = (el, x, y, rank) => {
+    box.appendChild(el);
+    libMap.labelItems.push({ el, x, y, rank });
+  };
+  if (libMap.layers.islands) {
+    for (const isl of d.islands) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "map-island";
+      b.innerHTML = `${isl.genre ? `<b>${escapeHtml(isl.genre)}</b>` : ""}${isl.artist ? `<span>${escapeHtml(isl.artist)}</span>` : ""}`;
+      const title = isl.genre || isl.artist;
+      b.title = `Включить остров «${title}» — ${isl.ids.length} ${ruPlural(isl.ids.length, "трек", "трека", "треков")}, сначала любимые`;
+      b.onclick = () => playMapIds(isl.ids, `Карта · ${title}`);
+      add(b, isl.x, isl.y, 1);
+    }
+  }
+  for (const l of d.labels) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "map-label";
+    b.style.setProperty("--c", l.color);
+    b.textContent = l.name;
+    b.title = `Включить «${l.name}» — ${l.track_ids.length} ${ruPlural(l.track_ids.length, "трек", "трека", "треков")}`;
+    b.onclick = () => playMapIds(l.track_ids, `Карта · ${l.name}`);
+    add(b, l.x, l.y, 0);
+  }
+}
+
+function resizeMap() {
+  const stage = $("map-stage");
+  if (!stage) return;
+  const rect = stage.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  libMap.w = rect.width;
+  libMap.h = rect.height;
+  libMap.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  for (const c of [$("map-canvas"), $("map-overlay")]) {
+    c.width = Math.round(rect.width * libMap.dpr);
+    c.height = Math.round(rect.height * libMap.dpr);
+  }
+  libMap.dirty = true;
+  requestMap();
+}
+
+// The view fits the points' bounding box, so a wide map fills a wide screen.
+function mapFrame() {
+  const [x0, y0, x1, y1] = libMap.data?.bbox || [0, 0, 1, 1];
+  const bw = Math.max(x1 - x0, 0.05);
+  const bh = Math.max(y1 - y0, 0.05);
+  const base = Math.min((libMap.w - 48) / bw, (libMap.h - 48) / bh);
+  return { b: Math.max(base, 1) * libMap.view.s, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
+
+function mapToScreen(x, y) {
+  const { b, cx, cy } = mapFrame();
+  return [(x - cx) * b + libMap.w / 2 + libMap.view.tx, (y - cy) * b + libMap.h / 2 + libMap.view.ty];
+}
+
+function mapToWorld(px, py) {
+  const { b, cx, cy } = mapFrame();
+  return [(px - libMap.w / 2 - libMap.view.tx) / b + cx, (py - libMap.h / 2 - libMap.view.ty) / b + cy];
+}
+
+function mapZoomAt(px, py, k) {
+  const [wx, wy] = mapToWorld(px, py);
+  libMap.view.s = Math.min(40, Math.max(0.6, libMap.view.s * k));
+  const [nx, ny] = mapToScreen(wx, wy);
+  libMap.view.tx += px - nx;
+  libMap.view.ty += py - ny;
+  libMap.dirty = true;
+  requestMap();
+}
+
+function mapPointRadius() {
+  return Math.min(6, Math.max(2, 2.2 * Math.sqrt(libMap.view.s)));
+}
+
+function mapCoverTarget(scale) {
+  const p = Math.max(0, Math.min(1, Math.log(scale / MAP_COVER_START) / Math.log(MAP_COVER_END / MAP_COVER_START)));
+  return p * p * (3 - 2 * p);
+}
+
+function mapHighlighted(i) {
+  if (libMap.selected) return libMap.selected.has(i);
+  if (libMap.genre >= 0) return libMap.data.gs[i] === libMap.genre;
+  return null;
+}
+
+function mapColors() {
+  const css = getComputedStyle($("map-stage"));
+  const c = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  return {
+    muted: c("--muted", "#9a968e"),
+    fg: c("--fg", "#ece8e1"),
+    bg: c("--surface", "#1a1b20"),
+    accent: c("--accent", "#e8a33d"),
+    accent2: c("--accent2", "#5fb3a8"),
+  };
+}
+
+// A soft round brush for the heat layer, recoloured with the theme accent.
+function mapHeatSprite(color) {
+  if (libMap.sprite?.color === color) return libMap.sprite.canvas;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, color);
+  grad.addColorStop(1, "transparent");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  libMap.sprite = { color, canvas: c };
+  return c;
+}
+
+// Only request covers for visible, non-overlapping points at close zoom.
+function mapCover(url) {
+  let entry = libMap.covers.get(url);
+  if (entry) return entry;
+  const img = new Image();
+  entry = { img, ready: false };
+  libMap.covers.set(url, entry);
+  while (libMap.covers.size > MAP_COVER_CACHE_LIMIT) {
+    libMap.covers.delete(libMap.covers.keys().next().value);
+  }
+  img.onload = () => { entry.ready = true; entry.readyAt = performance.now(); libMap.dirty = true; requestMap(); };
+  img.onerror = () => { entry.failed = true; };
+  img.src = thumbURL(url, 96);
+  return entry;
+}
+
+function drawMapLayer(t) {
+  const d = libMap.data;
+  const ctx = $("map-canvas").getContext("2d");
+  const col = mapColors();
+  const { w, h, dpr, layers } = libMap;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  // Faint dot grid that pans with the map.
+  const step = 28;
+  const ox = (((libMap.view.tx + w / 2) % step) + step) % step;
+  const oy = (((libMap.view.ty + h / 2) % step) + step) % step;
+  ctx.fillStyle = col.muted;
+  ctx.globalAlpha = 0.16;
+  for (let x = ox; x < w; x += step) for (let y = oy; y < h; y += step) ctx.fillRect(x, y, 1.4, 1.4);
+
+  const n = d.ids.length;
+  const sx = new Float32Array(n);
+  const sy = new Float32Array(n);
+  const r = mapPointRadius();
+  let onScreen = 0;
+  for (let i = 0; i < n; i++) {
+    [sx[i], sy[i]] = mapToScreen(d.xs[i], d.ys[i]);
+    if (sx[i] >= -r && sy[i] >= -r && sx[i] <= w + r && sy[i] <= h + r) onScreen++;
+  }
+  const off = (i, m = r) => sx[i] < -m || sy[i] < -m || sx[i] > w + m || sy[i] > h + m;
+
+  if (layers.heat && d.maxPlays > 0) {
+    const sprite = mapHeatSprite(col.accent);
+    const R = Math.min(70, 24 * Math.sqrt(libMap.view.s));
+    const lmax = Math.log1p(d.maxPlays);
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < n; i++) {
+      if (!d.plays[i] || off(i, R)) continue;
+      ctx.globalAlpha = 0.04 + 0.22 * (Math.log1p(d.plays[i]) / lmax);
+      ctx.drawImage(sprite, sx[i] - R, sy[i] - R, R * 2, R * 2);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  for (const l of d.labels) {
+    const [lx, ly] = mapToScreen(l.x, l.y);
+    const R = 70 * Math.sqrt(libMap.view.s);
+    const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, R);
+    g.addColorStop(0, l.color);
+    g.addColorStop(1, "transparent");
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = g;
+    ctx.fillRect(lx - R, ly - R, R * 2, R * 2);
+  }
+
+  ctx.lineWidth = 1;
+  if (layers.similar && d.k && onScreen <= MAP_SIMILAR_MAX) {
+    ctx.strokeStyle = col.fg;
+    ctx.globalAlpha = 0.09;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      if (off(i)) continue;
+      for (let j = 0; j < d.k; j++) {
+        const t = d.nbrs[i * d.k + j];
+        if (t < 0) continue;
+        ctx.moveTo(sx[i], sy[i]);
+        ctx.lineTo(sx[t], sy[t]);
+      }
+    }
+    ctx.stroke();
+  }
+  if (layers.artists) {
+    ctx.strokeStyle = col.accent2;
+    ctx.globalAlpha = 0.22;
+    ctx.beginPath();
+    for (const g of d.artistGroups) {
+      ctx.moveTo(sx[g[0]], sy[g[0]]);
+      for (let k = 1; k < g.length; k++) ctx.lineTo(sx[g[k]], sy[g[k]]);
+    }
+    ctx.stroke();
+  }
+  if (layers.transitions && d.trans.length) {
+    // The server sends the strongest first. Only the strongest that touch
+    // the screen are drawn, so any zoom shows paths rather than a hairball.
+    let left = MAP_TRANSITIONS_SHOWN;
+    ctx.strokeStyle = col.accent;
+    const lmax = Math.log1p(d.maxTrans);
+    for (const [a, b, c] of d.trans) {
+      if (off(a) && off(b)) continue;
+      if (left-- <= 0) break;
+      const k = Math.log1p(c) / lmax;
+      ctx.globalAlpha = 0.06 + 0.32 * k;
+      ctx.lineWidth = 0.6 + 1.6 * k;
+      mapArc(ctx, sx[a], sy[a], sx[b], sy[b]);
+    }
+    ctx.lineWidth = 1;
+  }
+
+  const dim = [];
+  const lit = [];
+  const plain = [];
+  for (let i = 0; i < n; i++) {
+    if (off(i)) continue;
+    const hl = mapHighlighted(i);
+    (hl === null ? plain : hl ? lit : dim).push(sx[i], sy[i]);
+  }
+  const dots = (list, fill, alpha, rr = r) => {
+    if (!list.length) return;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    for (let k = 0; k < list.length; k += 2) {
+      ctx.moveTo(list[k] + rr, list[k + 1]);
+      ctx.arc(list[k], list[k + 1], rr, 0, Math.PI * 2);
+    }
+    ctx.fill();
+  };
+  dots(plain, col.muted, 0.55);
+  dots(dim, col.muted, 0.14);
+  dots(lit, col.accent, 0.92);
+  if (layers.favorites && favoriteIds.size) {
+    const fav = [];
+    for (let i = 0; i < n; i++) if (favoriteIds.has(d.ids[i]) && !off(i)) fav.push(sx[i], sy[i]);
+    dots(fav, col.accent2, 0.95, r + 1);
+  }
+  libMap.coverAnimating = false;
+  if (libMap.coverProgress > 0) {
+    const size = Math.min(48, 40 + Math.max(0, Math.log2(libMap.view.s / MAP_COVER_END)) * 4);
+    const occupied = [];
+    for (let i = 0; i < n; i++) {
+      if (!d.artwork[i] || off(i, size / 2) || mapHighlighted(i) === false) continue;
+      const x = sx[i] - size / 2, y = sy[i] - size / 2;
+      if (occupied.some((p) => Math.abs(p[0] - x) < size + 3 && Math.abs(p[1] - y) < size + 3)) continue;
+      if (occupied.length >= 100) break;
+      occupied.push([x, y]);
+      const cover = mapCoverTarget(libMap.view.s) > 0 ? mapCover(d.artwork[i]) : libMap.covers.get(d.artwork[i]);
+      if (!cover) continue;
+      if (!cover.ready) continue;
+      const fade = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : Math.min(1, Math.max(0, (t - cover.readyAt) / 250));
+      if (fade < 1) libMap.coverAnimating = true;
+      const progress = libMap.coverProgress * fade;
+      const radius = r + (size / 2 - r) * progress;
+      const side = Math.min(cover.img.naturalWidth, cover.img.naturalHeight);
+      if (!side) continue;
+      ctx.save();
+      ctx.globalAlpha = progress;
+      ctx.beginPath();
+      ctx.arc(sx[i], sy[i], radius, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(cover.img, (cover.img.naturalWidth - side) / 2, (cover.img.naturalHeight - side) / 2, side, side,
+        sx[i] - radius, sy[i] - radius, radius * 2, radius * 2);
+      ctx.restore();
+      ctx.globalAlpha = progress * 0.7;
+      ctx.strokeStyle = col.fg;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(sx[i], sy[i], radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Curved, so A→B and B→A stay two visible lines.
+function mapArc(ctx, ax, ay, bx, by) {
+  const mx = (ax + bx) / 2 - (by - ay) * 0.18;
+  const my = (ay + by) / 2 + (bx - ax) * 0.18;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.quadraticCurveTo(mx, my, bx, by);
+  ctx.stroke();
+}
+
+// Labels are DOM buttons over the canvas. Each tries its own spot, then one
+// step below, above or to a side. A label with no room that close is hidden
+// rather than pushed away from its points; zooming in brings it back.
+function placeMapLabels() {
+  const placed = [];
+  const items = libMap.labelItems.map((it) => {
+    const [sx, sy] = mapToScreen(it.x, it.y);
+    return { ...it, sx, sy, bw: it.el.offsetWidth, bh: it.el.offsetHeight };
+  });
+  items.sort((a, b) => a.rank - b.rank || a.sy - b.sy);
+  const hits = (x, y, it) =>
+    placed.some((p) => x < p.x + p.bw + 4 && p.x < x + it.bw + 4 && y < p.y + p.bh + 4 && p.y < y + it.bh + 4);
+  for (const it of items) {
+    const cx = it.sx - it.bw / 2;
+    const cy = it.sy - it.bh / 2;
+    const dy = it.bh + 4;
+    const dx = it.bw / 2 + 6;
+    let spot = null;
+    for (const [ox, oy] of [[0, 0], [0, dy], [0, -dy], [dx, 0], [-dx, 0], [dx, dy], [-dx, dy], [dx, -dy], [-dx, -dy]]) {
+      const x = cx + ox;
+      const y = cy + oy;
+      const inside = x >= 4 && y >= 4 && x + it.bw <= libMap.w - 4 && y + it.bh <= libMap.h - 4;
+      if (inside && !hits(x, y, it)) {
+        spot = [x, y];
+        break;
+      }
+    }
+    it.el.style.visibility = spot ? "" : "hidden";
+    if (!spot) continue;
+    placed.push({ x: spot[0], y: spot[1], bw: it.bw, bh: it.bh });
+    it.el.style.transform = `translate(${Math.round(spot[0])}px, ${Math.round(spot[1])}px)`;
+  }
+}
+
+// Points go on the base canvas (redrawn only when the view changes); the
+// focused track's links, the lasso and the now-playing pulse go on an overlay
+// above the labels.
+function drawMapFrame(t) {
+  const d = libMap.data;
+  if (libMap.dirty) {
+    drawMapLayer(t);
+    placeMapLabels();
+    libMap.dirty = false;
+  }
+  const overlay = $("map-overlay");
+  const ctx = overlay.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  ctx.setTransform(libMap.dpr, 0, 0, libMap.dpr, 0, 0);
+  const col = mapColors();
+  const r = mapPointRadius();
+
+  const f = libMap.focus;
+  if (f >= 0 && libMap.layers.focus) {
+    // Dim the map so the focused track's links read on top of every layer.
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = col.bg;
+    ctx.fillRect(0, 0, libMap.w, libMap.h);
+    const [fx, fy] = mapToScreen(d.xs[f], d.ys[f]);
+    const ends = [];
+    ctx.lineWidth = 1.6;
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = col.accent2;
+    const nbrs = d.k ? Array.from(d.nbrs.subarray(f * d.k, f * d.k + d.k)) : libMap.focusNbrs || [];
+    for (const nb of nbrs) {
+      if (nb < 0) continue;
+      const [x, y] = mapToScreen(d.xs[nb], d.ys[nb]);
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ends.push([x, y, col.accent2]);
+    }
+    ctx.strokeStyle = col.accent;
+    for (const [a, b] of d.trans) {
+      if (a !== f && b !== f) continue;
+      const o = a === f ? b : a;
+      const [x, y] = mapToScreen(d.xs[o], d.ys[o]);
+      const [ax, ay, bx, by] = a === f ? [fx, fy, x, y] : [x, y, fx, fy];
+      mapArc(ctx, ax, ay, bx, by);
+      ends.push([x, y, col.accent]);
+    }
+    for (const [x, y, c] of ends) {
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = col.fg;
+    ctx.beginPath();
+    ctx.arc(fx, fy, r + 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (libMap.path && libMap.path.length > 1) {
+    ctx.beginPath();
+    libMap.path.forEach(([x, y], k) => {
+      const [px, py] = mapToScreen(x, y);
+      if (k) ctx.lineTo(px, py);
+      else ctx.moveTo(px, py);
+    });
+    ctx.closePath();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = col.accent;
+    ctx.fill();
+    ctx.globalAlpha = 0.9;
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = col.accent;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  const i = current ? d.index.get(current.id) : undefined;
+  if (i !== undefined) {
+    const [px, py] = mapToScreen(d.xs[i], d.ys[i]);
+    const phase = (t % 1600) / 1600;
+    ctx.fillStyle = col.accent;
+    ctx.strokeStyle = col.accent;
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.arc(px, py, r + 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1 - phase;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(px, py, r + 4 + phase * 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(px, py, r + 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  return i !== undefined;
+}
+
+function mapTick(t) {
+  libMap.raf = 0;
+  if (!mapVisible() || !libMap.data || !libMap.w) return;
+  const target = mapCoverTarget(libMap.view.s);
+  const elapsed = libMap.coverTime ? Math.min(50, t - libMap.coverTime) : 16;
+  libMap.coverTime = t;
+  const previous = libMap.coverProgress;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) libMap.coverProgress = target;
+  else {
+    libMap.coverProgress += (target - libMap.coverProgress) * (1 - Math.exp(-elapsed / 110));
+    if (Math.abs(target - libMap.coverProgress) < 0.005) libMap.coverProgress = target;
+  }
+  if (previous !== libMap.coverProgress || libMap.coverAnimating) libMap.dirty = true;
+  const pulsing = drawMapFrame(t);
+  // Animate only while something moves; otherwise look for a track change twice a second.
+  if (pulsing || libMap.path || libMap.coverProgress !== target || libMap.coverAnimating) libMap.raf = requestAnimationFrame(mapTick);
+  else libMap.idle = setTimeout(requestMap, 500);
+}
+
+function requestMap() {
+  if (libMap.raf) return;
+  clearTimeout(libMap.idle);
+  libMap.idle = 0;
+  libMap.raf = requestAnimationFrame(mapTick);
+}
+
+function mapPointerPos(e) {
+  const rect = $("map-canvas").getBoundingClientRect();
+  return [e.clientX - rect.left, e.clientY - rect.top];
+}
+
+function mapHit(px, py) {
+  const d = libMap.data;
+  let best = -1;
+  let bestD = Math.max(16, mapPointRadius() + 8, 24 * libMap.coverProgress) ** 2;
+  for (let i = 0; i < d.ids.length; i++) {
+    if (mapHighlighted(i) === false) continue;
+    const [sx, sy] = mapToScreen(d.xs[i], d.ys[i]);
+    const dd = (sx - px) ** 2 + (sy - py) ** 2;
+    if (dd < bestD) {
+      bestD = dd;
+      best = i;
+    }
+  }
+  return best;
+}
+
+let libraryById = null;
+function mapTrackInfo(id) {
+  if (!libraryById || libraryById.size !== library.length) libraryById = new Map(library.map((t) => [t.id, t]));
+  const t = libraryById.get(id);
+  if (t) return Promise.resolve(t);
+  return api(`/api/tracks/${id}`);
+}
+
+function closeMapCard() {
+  $("map-card").hidden = true;
+  if (libMap.focus >= 0) {
+    libMap.focus = -1;
+    libMap.focusNbrs = null;
+    requestMap();
+  }
+}
+
+async function showMapCard(i, px, py) {
+  const card = $("map-card");
+  const d = libMap.data;
+  const id = d.ids[i];
+  card.dataset.id = String(id);
+  libMap.focus = i;
+  libMap.focusNbrs = null;
+  requestMap();
+  if (!d.k) {
+    // A map built before sound neighbours: ask the live index instead.
+    api(`/api/similar/${id}`)
+      .then((hits) => {
+        if (libMap.focus !== i) return;
+        libMap.focusNbrs = hits.slice(0, 5).map((h) => d.index.get(h.id)).filter((x) => x !== undefined);
+        requestMap();
+      })
+      .catch(() => {});
+  }
+  let t;
+  try {
+    t = await mapTrackInfo(id);
+  } catch (e) {
+    toast(e.message || String(e));
+    return;
+  }
+  if (card.dataset.id !== String(id)) return;
+  const art = t.artwork || `/api/artwork/${id}`;
+  const plays = d.plays[i];
+  const sub = [t.artist, t.album].filter(Boolean).join(" · ");
+  const heard = plays ? `слушал ${plays} ${ruPlural(plays, "раз", "раза", "раз")}` : "ещё не слушал";
+  card.innerHTML = `
+    <img class="map-card-art" src="${escapeHtml(art)}" alt="" loading="lazy" />
+    <div class="map-card-text">
+      <b>${escapeHtml(t.title || "Без названия")}</b>
+      <span>${escapeHtml(sub)}</span>
+      <small>${heard}${favoriteIds.has(id) ? " · в избранном" : ""}</small>
+    </div>
+    <div class="map-card-actions">
+      <button type="button" class="btn primary" data-act="play">Играть</button>
+      <button type="button" class="btn" data-act="radio">Радио</button>
+    </div>
+    <button type="button" class="map-icon map-card-close" data-act="close" aria-label="Закрыть">×</button>`;
+  card.querySelector(".map-card-art").onerror = (e) => {
+    const stub = document.createElement("div");
+    stub.className = "map-card-art";
+    stub.textContent = (t.title || "?").trim().charAt(0).toUpperCase();
+    e.target.replaceWith(stub);
+  };
+  card.onclick = (e) => {
+    const act = e.target.closest("[data-act]")?.dataset.act;
+    if (act === "close") closeMapCard();
+    if (act === "play") playFixed({ track_id: id, name: t.title }).catch((err) => toast(err.message || String(err)));
+    if (act === "radio") startRadio({ track_id: id }).catch((err) => toast(err.message || String(err)));
+  };
+  card.hidden = false;
+  const cw = card.offsetWidth;
+  const ch = card.offsetHeight;
+  const x = Math.min(libMap.w - cw - 8, Math.max(8, px - cw / 2));
+  const y = py + 14 + ch < libMap.h - 8 ? py + 14 : Math.max(8, py - ch - 14);
+  card.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+}
+
+function finishMapLasso() {
+  const poly = libMap.path;
+  libMap.path = null;
+  setMapLasso(false);
+  if (!poly || poly.length < 3) {
+    requestMap();
+    return;
+  }
+  const d = libMap.data;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of poly) {
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+    y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  const inside = (x, y) => {
+    let hit = false;
+    for (let a = 0, b = poly.length - 1; a < poly.length; b = a++) {
+      const [ax, ay] = poly[a];
+      const [bx, by] = poly[b];
+      if (ay > y !== by > y && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) hit = !hit;
+    }
+    return hit;
+  };
+  const picked = new Set();
+  for (let i = 0; i < d.ids.length; i++) {
+    const x = d.xs[i];
+    const y = d.ys[i];
+    if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+    if (libMap.genre >= 0 && d.gs[i] !== libMap.genre) continue;
+    if (inside(x, y)) picked.add(i);
+  }
+  libMap.selected = picked.size ? picked : null;
+  if (!picked.size) toast("В выделенной области нет треков");
+  renderMapSelection();
+  libMap.dirty = true;
+  requestMap();
+}
+
+function renderMapSelection() {
+  const bar = $("map-selection");
+  const n = libMap.selected?.size || 0;
+  bar.hidden = !n;
+  if (n) $("map-sel-count").textContent = `${n} ${ruPlural(n, "трек", "трека", "треков")} в выделении`;
+}
+
+function mapSelectionIds(shuffle) {
+  const d = libMap.data;
+  // Left to right across the selection, so a stretched lasso plays as a walk.
+  const rows = [...libMap.selected].sort((a, b) => d.xs[a] - d.xs[b]);
+  if (shuffle) {
+    for (let k = rows.length - 1; k > 0; k--) {
+      const j = Math.floor(Math.random() * (k + 1));
+      [rows[k], rows[j]] = [rows[j], rows[k]];
+    }
+  }
+  return rows.slice(0, MAP_PLAY_LIMIT).map((i) => d.ids[i]);
+}
+
+function setMapFull(on) {
+  const el = $("lib-map");
+  if (!el) return;
+  el.classList.toggle("is-full", on);
+  $("map-full").setAttribute("aria-pressed", String(on));
+  $("map-full").setAttribute("aria-label", on ? "Выйти из полноэкранного режима" : "На весь экран");
+  document.body.style.overflow = on ? "hidden" : "";
+  if (on && !document.fullscreenElement) el.requestFullscreen?.().catch(() => {});
+  if (!on && document.fullscreenElement === el) document.exitFullscreen?.().catch(() => {});
+  resizeMap();
+}
+
+function setMapLasso(on) {
+  libMap.lasso = on;
+  $("map-lasso").setAttribute("aria-pressed", String(on));
+  $("map-stage").classList.toggle("lasso", on);
+}
+
+function wireLibraryMap() {
+  if (libMap.wired || !$("lib-map")) return;
+  libMap.wired = true;
+  const canvas = $("map-canvas");
+  const stage = $("map-stage");
+  new ResizeObserver(() => resizeMap()).observe(stage);
+  // Right and middle buttons pan the map, so no browser menu over it.
+  stage.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  $("map-genre").onchange = (e) => {
+    libMap.genre = e.target.value === "" ? -1 : +e.target.value;
+    libMap.dirty = true;
+    requestMap();
+  };
+  $("map-lasso").onclick = () => setMapLasso(!libMap.lasso);
+  $("map-zoom-in").onclick = () => mapZoomAt(libMap.w / 2, libMap.h / 2, 1.5);
+  $("map-zoom-out").onclick = () => mapZoomAt(libMap.w / 2, libMap.h / 2, 1 / 1.5);
+  $("map-full").onclick = () => setMapFull(!$("lib-map").classList.contains("is-full"));
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && $("lib-map").classList.contains("is-full")) setMapFull(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && $("lib-map").classList.contains("is-full")) setMapFull(false);
+  });
+  $("map-fit").onclick = () => {
+    libMap.view = { s: 1, tx: 0, ty: 0 };
+    libMap.dirty = true;
+    requestMap();
+  };
+  $("map-sel-clear").onclick = () => {
+    libMap.selected = null;
+    renderMapSelection();
+    libMap.dirty = true;
+    requestMap();
+  };
+  const playSelection = (shuffle) => playMapIds(mapSelectionIds(shuffle), "Карта · выделение");
+  $("map-sel-play").onclick = () => playSelection(false);
+  $("map-sel-shuffle").onclick = () => playSelection(true);
+
+  canvas.addEventListener("pointerdown", (e) => {
+    if (!libMap.data) return;
+    // No text selection or image drag while panning with the mouse.
+    if (e.pointerType === "mouse") e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    const p = mapPointerPos(e);
+    libMap.pointers.set(e.pointerId, p);
+    closeMapCard();
+    if (libMap.pointers.size === 2) {
+      // A second finger turns any drag or lasso into a pinch.
+      libMap.path = null;
+      const [a, b] = [...libMap.pointers.values()];
+      libMap.gesture = { pinch: Math.hypot(a[0] - b[0], a[1] - b[1]), mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+    } else if (libMap.lasso && e.button === 0) {
+      libMap.path = [mapToWorld(...p)];
+      libMap.gesture = null;
+    } else {
+      libMap.gesture = { start: p, last: p, moved: e.button !== 0 };
+    }
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!libMap.pointers.has(e.pointerId)) return;
+    const p = mapPointerPos(e);
+    libMap.pointers.set(e.pointerId, p);
+    const g = libMap.gesture;
+    if (g?.pinch && libMap.pointers.size === 2) {
+      const [a, b] = [...libMap.pointers.values()];
+      const dist = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      libMap.view.tx += mid[0] - g.mid[0];
+      libMap.view.ty += mid[1] - g.mid[1];
+      mapZoomAt(mid[0], mid[1], dist / Math.max(g.pinch, 1));
+      g.pinch = dist;
+      g.mid = mid;
+    } else if (libMap.path) {
+      const [lx, ly] = mapToScreen(...libMap.path[libMap.path.length - 1]);
+      if (Math.hypot(p[0] - lx, p[1] - ly) > 3) libMap.path.push(mapToWorld(...p));
+      requestMap();
+    } else if (g?.start) {
+      if (Math.hypot(p[0] - g.start[0], p[1] - g.start[1]) > 6) g.moved = true;
+      if (g.moved) {
+        libMap.view.tx += p[0] - g.last[0];
+        libMap.view.ty += p[1] - g.last[1];
+        libMap.dirty = true;
+        requestMap();
+      }
+      g.last = p;
+    }
+  });
+  const release = (e) => {
+    if (!libMap.pointers.has(e.pointerId)) return;
+    libMap.pointers.delete(e.pointerId);
+    if (libMap.pointers.size) return;
+    const g = libMap.gesture;
+    libMap.gesture = null;
+    if (libMap.path) {
+      finishMapLasso();
+    } else if (g?.start && !g.moved && e.type === "pointerup") {
+      const i = mapHit(...g.start);
+      if (i >= 0) showMapCard(i, ...mapToScreen(libMap.data.xs[i], libMap.data.ys[i]));
+    }
+  };
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
+  canvas.addEventListener(
+    "wheel",
+    (e) => {
+      if (!libMap.data) return;
+      e.preventDefault();
+      mapZoomAt(...mapPointerPos(e), Math.exp(-e.deltaY * 0.0015));
+    },
+    { passive: false }
+  );
+}
+
 function setLibTab(tab) {
   libTab = tab;
   document.querySelectorAll("#view-library .seg-btn").forEach((b) => {
@@ -2144,7 +3241,8 @@ async function loadLibrary() {
   library = await api("/api/library");
   await Promise.all([loadFavorites(), loadArtistPhotos()]);
   const { artists, albums } = groupCatalog(library);
-  $("lib-count").textContent = `${library.length} треков · ${artists.length} артистов · ${albums.length} альбомов · ${favoriteIds.size} в любимых`;
+  libCountText = `${library.length} треков · ${artists.length} артистов · ${albums.length} альбомов · ${favoriteIds.size} в любимых`;
+  $("lib-count").textContent = libCountText;
   setLibTab(libTab);
 }
 
@@ -2153,6 +3251,22 @@ function renderLib(q) {
   const ul = $("lib-list");
   const grid = $("lib-grid");
   if (!ul || !grid) return;
+  const mapEl = $("lib-map");
+  if (mapEl) {
+    const onMap = libTab === "map";
+    mapEl.hidden = !onMap;
+    const tools = document.querySelector("#view-library .lib-tools");
+    if (tools) tools.style.display = onMap ? "none" : "";
+    if (onMap) {
+      ul.hidden = true;
+      grid.hidden = true;
+      $("lib-artist-head").hidden = true;
+      showLibraryMap();
+      return;
+    }
+    if (libCountText) $("lib-count").textContent = libCountText;
+    if (mapEl.classList.contains("is-full")) setMapFull(false);
+  }
   const artistPage = libTab === "artists" && !!libArtist;
   $("lib-artist-head").hidden = !artistPage;
   if (artistPage) {
@@ -3842,6 +4956,7 @@ const JOB_NAMES = {
   scan: "Сканирование",
   embed: "Аудиоэмбеддинги",
   clusters: "Кластеры",
+  library_map: "Карта библиотеки",
   daily: "Daily Mix",
   album_tips: "Подсказки альбомов",
   mix_pack: "Набор миксов",

@@ -128,6 +128,24 @@ def embed_waveforms(ys: list[np.ndarray], *, model_id: str = DEFAULT_CLAP_MODEL)
     return vectors
 
 
+def embed_texts(texts: list[str], *, model_id: str = DEFAULT_CLAP_MODEL) -> list[np.ndarray]:
+    """Embed text prompts into the same space as the audio embeddings."""
+    import torch
+
+    processor, model, device = _load_model(model_id)
+    if not texts:
+        return []
+    inputs = processor(text=texts, return_tensors="pt", padding=True)
+    inputs = {k: v.to(device) for k, v in inputs.items() if torch.is_tensor(v)}
+    with _INFER_LOCK:
+        with torch.no_grad():
+            out = model.get_text_features(**inputs)
+    if hasattr(out, "pooler_output") and out.pooler_output is not None:
+        out = out.pooler_output
+    arr = out.detach().cpu().float().numpy()
+    return [_l2_normalize(arr[i].reshape(-1)) for i in range(arr.shape[0])]
+
+
 def embed_waveform(y: np.ndarray, *, model_id: str = DEFAULT_CLAP_MODEL) -> np.ndarray:
     """Embed a single mono waveform (already at CLAP sample rate)."""
     return embed_waveforms([y], model_id=model_id)[0]
