@@ -16,8 +16,8 @@ from musik.db.schema import connect
 from musik.db.scoped_connection import profile_scope
 from musik.discover.albums import rebuild_discover_tips
 from musik.embed import embed_library
-from musik.index import assign_clusters
-from musik.jobs.queue import claim_next, fail_job, finish_job, update_job_progress
+from musik.index import assign_clusters, build_library_map
+from musik.jobs.queue import claim_next, enqueue_unless_pending, fail_job, finish_job, update_job_progress
 from musik.scanner import scan_library
 
 log = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ JOB_KINDS = frozenset(
         "scan",
         "embed",
         "clusters",
+        "library_map",
         "daily",
         "album_tips",
         "full_rescan",
@@ -140,7 +141,21 @@ def _run_embed(
 
 def _run_clusters(payload: dict[str, Any]) -> dict[str, Any]:
     result = assign_clusters(k=int(payload.get("k", 8)))
-    return {"k": result.k, "n": result.n, "inertia": result.inertia}
+    out: dict[str, Any] = {"k": result.k, "n": result.n, "inertia": result.inertia}
+    # The map follows the same embeddings, but it needs umap-learn and the CLAP
+    # text tower, which a CPU-only worker lacks. A separate job lets the queue
+    # route it (MUSIK_WORKER_JOB_KINDS) to a worker that has them.
+    try:
+        job = enqueue_unless_pending("library_map")
+        out["library_map_job"] = job["id"] if job else "already pending"
+    except Exception as exc:  # noqa: BLE001
+        log.warning("library_map enqueue after clusters: %s", exc)
+    return out
+
+
+def _run_library_map(payload: dict[str, Any]) -> dict[str, Any]:
+    result = build_library_map(seed=int(payload.get("seed", 42)))
+    return {"n": result.n, "method": result.method, "labels": result.labels, "genres": result.genres}
 
 
 def _run_daily(payload: dict[str, Any]) -> dict[str, Any]:
@@ -230,6 +245,8 @@ def _process_job(job: dict[str, Any]) -> dict[str, Any]:
         return _run_embed(payload, job_id=job_id)
     if kind == "clusters":
         return _run_clusters(payload)
+    if kind == "library_map":
+        return _run_library_map(payload)
     if kind == "daily":
         return _run_daily(payload)
     if kind == "mix_pack":

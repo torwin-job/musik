@@ -155,7 +155,10 @@ def read_tags(path: Path) -> TrackTags:
                         else:
                             pictures.append(val)
             for pic in pictures:
+                # APIC and FLAC pictures carry .data; an MP4Cover is the bytes.
                 data = getattr(pic, "data", None)
+                if data is None and isinstance(pic, (bytes, bytearray)):
+                    data = pic
                 if data:
                     tags.artwork_bytes = bytes(data)
                     break

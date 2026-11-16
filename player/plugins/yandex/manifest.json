@@ -1,0 +1,12 @@
+{
+  "id": "yandex",
+  "name": "Яндекс Музыка",
+  "version": "1.0.0",
+  "description": "Поиск и импорт музыки из Яндекса",
+  "protocol": "1",
+  "capabilities": [
+    "library.search",
+    "library.import_url"
+  ],
+  "executable": "yandex-plugin"
+}

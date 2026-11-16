@@ -14,7 +14,13 @@ def test_worker_dependencies_are_cached_before_source_copy() -> None:
     assert "--mount=type=cache,target=/root/.cache/pip" in dockerfile
     assert "--no-cache-dir" not in dockerfile
     assert "download.pytorch.org/whl/cpu" in dockerfile
-    assert "COPY player/internal/playback/mixes.json" in dockerfile
+    for contract in (
+        "player/internal/queue/model_default.json",
+        "player/internal/queue/ranker_spec.json",
+        "player/internal/playback/mixes.json",
+    ):
+        assert (ROOT / contract).is_file()
+        assert f"COPY {contract} /app/{contract}" in dockerfile
     assert "MUSIK_MIX_CONTRACT=/app/player/internal/playback/mixes.json" in dockerfile
 
 

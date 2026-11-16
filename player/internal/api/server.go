@@ -95,6 +95,7 @@ var apiRoutes = []routeDescriptor{
 	{"GET", "/api/profile", scopeProfile, (*Server).handleProfile},
 	{"PUT", "/api/profile/explore", scopeProfile, (*Server).handleExploreBounds},
 	{"GET", "/api/library", scopeProfile, (*Server).handleLibrary},
+	{"GET", "/api/library/map", scopeProfile, (*Server).handleLibraryMap},
 	{"GET", "/api/artists", scopeProfile, (*Server).handleArtists},
 	{"GET", "/api/albums", scopeProfile, (*Server).handleAlbums},
 	{"GET", "/api/tracks/{id}", scopeProfile, (*Server).handleTrack},

@@ -47,6 +47,8 @@ build/
 *.aab
 *.ipa
 player/bin/
+player/plugins/yandex/token
+player/plugins/yandex/yandex-plugin
 
 # Flutter / Android local state
 # The Flutter application is published as a separate repository.

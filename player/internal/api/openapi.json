@@ -814,6 +814,16 @@
         }
       }
     },
+    "/api/library/map": {
+      "get": {
+        "summary": "2D library map (UMAP over CLAP) with mood labels",
+        "responses": {
+          "200": {
+            "description": "{ready, method, updated_at, total, genres, points: [[track_id, x, y, genre, neighbour_ids...]], labels: [{id, name, color, x, y, track_ids}], transitions: [[from_id, to_id, count]] of this profile}"
+          }
+        }
+      }
+    },
     "/api/library/upload": {
       "post": {
         "summary": "Upload audio files into MUSIK_LIBRARY",

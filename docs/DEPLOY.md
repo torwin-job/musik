@@ -164,6 +164,23 @@ Compose монтирует его в player **на запись** как `/plugi
 Таймаут и параллелизм — `MUSIK_PLUGIN_TIMEOUT` (900 секунд) и
 `MUSIK_PLUGIN_CONCURRENCY` (2).
 
+### Яндекс Музыка
+
+В репозитории есть protocol v1 плагин с поиском и импортом треков, альбомов и
+артистов. Соберите executable из каталога `player/`:
+
+```sh
+go build -o plugins/yandex/yandex-plugin ./cmd/yandex-plugin
+```
+
+Установите `MUSIK_PLUGIN_DIRS` на `player/plugins/yandex` или скопируйте туда
+`manifest.json` и executable. Положите OAuth token в файл `token` рядом с
+executable и ограничьте доступ учётной записью player (например, mode `0600`).
+В multi-user установке этот v1 плагин использует один серверный token и доступен
+администратору; protocol v1 пока не предоставляет отдельный вход Яндекса для
+каждого профиля. Дополнительные настройки описаны в
+[`player/plugins/yandex/README.md`](../player/plugins/yandex/README.md).
+
 ## Makefile
 
 | Цель | Действие |

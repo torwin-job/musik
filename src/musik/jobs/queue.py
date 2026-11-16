@@ -73,6 +73,17 @@ def enqueue_job_once(
         return _job_row(_job_mapping(job))
 
 
+def enqueue_unless_pending(kind: str, payload: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Enqueue kind unless a job of that kind is still waiting to be claimed."""
+    with connect() as conn:
+        waiting = conn.session.scalar(
+            select(Job.id).where(Job.kind == kind, Job.status == "pending").limit(1)
+        )
+    if waiting is not None:
+        return None
+    return enqueue_job(kind, payload)
+
+
 def claim_next(*, kinds: tuple[str, ...] | None = None) -> dict[str, Any] | None:
     now = utcnow()
     with connect() as conn:

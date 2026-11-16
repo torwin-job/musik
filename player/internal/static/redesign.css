@@ -438,7 +438,7 @@ input[type="range"] { accent-color: var(--accent); }
 }
 .seg-btn.active { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
 .seg-link { border-style: dashed; }
-#lib-filter, .lib-tools select, .panel input, .panel select, #pl-name {
+#lib-filter, .lib-tools select, .map-genre, .panel input, .panel select, #pl-name {
   min-height: 48px;
   border-radius: 24px;
   border: 1px solid var(--line);

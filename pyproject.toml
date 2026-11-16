@@ -22,6 +22,8 @@ dependencies = [
   "sqlalchemy>=2.0,<3",
   "alembic>=1.13,<2",
   "psycopg[binary]>=3.2,<4",
+  # library map projection; numba and scikit-learn already come with librosa
+  "umap-learn>=0.5.5",
 ]
 
 [project.optional-dependencies]

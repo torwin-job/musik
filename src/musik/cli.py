@@ -285,6 +285,22 @@ def clusters(
         console.print(t)
 
 
+@app.command("map")
+def library_map(
+    seed: int = typer.Option(42, "--seed", help="Seed UMAP: тот же seed — та же раскладка"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Построить карту библиотеки (UMAP по CLAP + подписи настроений)."""
+    from musik.index import build_library_map
+
+    _setup_logging(verbose)
+    ensure_db()
+    result = build_library_map(seed=seed)
+    console.print(
+        f"Map: n={result.n} method={result.method} labels={result.labels} genres={result.genres}"
+    )
+
+
 @app.command()
 def init() -> None:
     """Создать каталоги и пустую БД."""
@@ -870,7 +886,7 @@ def watch_cmd(
 
 @jobs_app.command("enqueue")
 def jobs_enqueue(
-    kind: str = typer.Argument(..., help="scan|embed|clusters|daily|album_tips|full_rescan|mix_pack|train_ranker"),
+    kind: str = typer.Argument(..., help="scan|embed|clusters|library_map|daily|album_tips|full_rescan|mix_pack|train_ranker"),
     payload_json: Optional[str] = typer.Option(
         None, "--payload", "-p", help="JSON payload для задачи"
     ),
